@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@theme {
+  --color-coral: #FF6B5B;
+  --color-coral-hover: #FF8577;
+  --color-coral-dark: #E55A4A;
+  --color-dark-900: #0D0D0D;
+  --color-dark-800: #1A1A1A;
+  --color-dark-700: #2A2A2A;
+  --color-dark-600: #3A3A3A;
+  --color-dark-500: #4A4A4A;
+  --color-muted: #A0A0A0;
+  --color-muted-light: #C0C0C0;
+  --color-success: #4ADE80;
+  --color-warning: #FBBF24;
+  --color-danger: #F87171;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-dark-900);
+  background-image: url('/background_image.png');
+  background-size: cover;
+  background-attachment: fixed;
+  background-position: center;
+  background-repeat: no-repeat;
+  color: #FFFFFF;
+  font-family: var(--font-sans);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-dark-800);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-dark-500);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-coral);
+}
+
+/* Score gauge animation */
+@keyframes score-fill {
+  from { stroke-dashoffset: 251; }
+}
+.animate-score-fill {
+  animation: score-fill 1s ease-out forwards;
+}

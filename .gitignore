@@ -1,0 +1,29 @@
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+dist.zip
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Azure Functions local settings (contains secrets)
+local.settings.json
+
+# Azure logs and artifacts
+**/applogs/
+**/*.zip
