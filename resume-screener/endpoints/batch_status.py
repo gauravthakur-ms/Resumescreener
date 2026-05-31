@@ -4,7 +4,7 @@
 import json
 import azure.functions as func
 
-from storage.cosmos_client import get_batch, list_batches
+from storage.cosmos_client import get_batch, list_batches, delete_batch
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -34,7 +34,7 @@ def handle_batch_status(req: func.HttpRequest) -> func.HttpResponse:
     duplicates = batch.get("duplicates", 0)
     done = processed + failed + duplicates
     pending = max(total - done, 0)
-    progress_pct = round((done / total) * 100, 1) if total > 0 else 0
+    progress_pct = min(round((done / total) * 100, 1), 100) if total > 0 else 0
 
     response = {
         "batch_id": batch_id,
@@ -60,7 +60,7 @@ def handle_batch_status(req: func.HttpRequest) -> func.HttpResponse:
 def handle_get_batches(req: func.HttpRequest) -> func.HttpResponse:
     """GET /api/batches — List recent batches."""
     try:
-        batches = list_batches(limit=20)
+        batches = list_batches(limit=50)
         result = []
         for b in batches:
             total = b.get("total", 0)
@@ -91,3 +91,29 @@ def handle_get_batches(req: func.HttpRequest) -> func.HttpResponse:
             status_code=500,
             mimetype="application/json",
         )
+
+
+def handle_delete_batch(req: func.HttpRequest) -> func.HttpResponse:
+    """DELETE /api/batch/{batch_id} — Delete a specific batch."""
+    batch_id = req.route_params.get("batch_id")
+    if not batch_id:
+        return func.HttpResponse(
+            json.dumps({"error": "batch_id is required"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    deleted = delete_batch(batch_id)
+    if not deleted:
+        return func.HttpResponse(
+            json.dumps({"error": f"Batch not found: {batch_id}"}),
+            status_code=404,
+            mimetype="application/json",
+        )
+
+    logger.info(f"Deleted batch: {batch_id}")
+    return func.HttpResponse(
+        json.dumps({"message": "Batch deleted successfully", "id": batch_id}),
+        status_code=200,
+        mimetype="application/json",
+    )

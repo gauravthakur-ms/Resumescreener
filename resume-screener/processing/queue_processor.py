@@ -184,8 +184,8 @@ def process_resume_message(message_body: str):
 
         total_exp = calculate_total_experience(individual_raw)
 
-        # Relevant skills = mandatory + primary from JD
-        relevant_skills = jd_skills.get("mandatory", []) + jd_skills.get("primary", [])
+        # Relevant skills = primary + secondary from JD
+        relevant_skills = jd_skills.get("primary", []) + jd_skills.get("secondary", [])
         relevant_exp = calculate_relevant_experience(individual_raw, relevant_skills)
 
         last_work_date = exp_data.get("last_work_date", "NDATA")
@@ -317,7 +317,8 @@ def process_resume_message(message_body: str):
         log_with_context(logger, "ERROR", f"Pipeline failed for {file_name}: {e}",
                         trace_id=trace_id, stage="pipeline_error")
         increment_batch_counter(batch_id, "failed")
-        raise  # Re-raise so queue can retry
+        # Don't re-raise: failure is recorded in batch counter.
+        # Re-raising causes queue retry which inflates the failed count.
 
 
 def _accumulate_tokens(total: dict, usage: dict):

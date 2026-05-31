@@ -1,7 +1,8 @@
-export function Card({ children, className = '' }) {
+export function Card({ children, className = '', ...props }) {
   return (
     <div
       className={`bg-[rgba(22,22,22,0.85)] backdrop-blur-[8px] border border-dark-600 rounded-xl p-6 ${className}`}
+      {...props}
     >
       {children}
     </div>
@@ -117,7 +118,7 @@ export function ScoreGauge({ score, size = 64 }) {
   );
 }
 
-export function Modal({ isOpen, onClose, title, children }) {
+export function Modal({ isOpen, onClose, title, children, wide }) {
   if (!isOpen) return null;
 
   return (
@@ -126,7 +127,7 @@ export function Modal({ isOpen, onClose, title, children }) {
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative bg-dark-800 border border-dark-600 rounded-2xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl">
+      <div className={`relative bg-dark-800 border border-dark-600 rounded-2xl p-6 w-full max-h-[85vh] overflow-y-auto shadow-2xl ${wide ? 'max-w-3xl' : 'max-w-lg'}`}>
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-white">{title}</h2>
           <button

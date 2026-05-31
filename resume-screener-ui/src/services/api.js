@@ -12,12 +12,14 @@ const api = axios.create({
 // JD endpoints
 export const getJDs = () => api.get('/jd');
 export const getJDById = (jdId) => api.get(`/jd/${jdId}`);
+export const deleteJD = (jdId) => api.delete(`/jd/${jdId}`);
+export const updateJD = (jdId, data) => api.put(`/jd/${jdId}`, data);
 export const uploadJD = (formData) =>
   api.post('/jd', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
-export const uploadJDText = (text, title) =>
-  api.post('/jd', { text, title });
+export const uploadJDText = (text, title, project_id) =>
+  api.post('/jd', { text, title, project_id });
 
 // Resume endpoints
 export const uploadResumes = (jdId, formData) =>
@@ -28,9 +30,14 @@ export const uploadResumes = (jdId, formData) =>
 // Batch endpoints
 export const getBatches = () => api.get('/batches');
 export const getBatchStatus = (batchId) => api.get(`/batch/${batchId}/status`);
+export const deleteBatch = (batchId) => api.delete(`/batch/${batchId}`);
 export const getBatchResults = (batchId, top, sort = 'match_score') =>
   api.get(`/batch/${batchId}/results`, { params: { top, sort } });
 export const getBatchExport = (batchId) => api.get(`/batch/${batchId}/export`, { responseType: 'blob' });
+
+// Screened Resumes / Candidates
+export const getCandidatesByJd = (jdId) => api.get(`/jd/${jdId}/candidates`);
+export const deleteCandidate = (candidateId, jdId) => api.delete(`/candidate/${candidateId}`, { params: { jd_id: jdId } });
 
 // Health
 export const healthCheck = () => api.get('/health');

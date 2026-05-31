@@ -56,6 +56,19 @@ def handle_resume_upload(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="application/json",
         )
 
+    # Collect all file objects from all field names (handles multiple files under same key)
+    all_files = []
+    for field_name in files:
+        file_list = files.getlist(field_name)
+        all_files.extend(file_list)
+
+    if not all_files:
+        return func.HttpResponse(
+            json.dumps({"error": "No files uploaded. Send resume files as multipart/form-data."}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
     batch_id = str(uuid.uuid4())
     trace_id = f"batch_{batch_id[:8]}"
 
@@ -64,7 +77,7 @@ def handle_resume_upload(req: func.HttpRequest) -> func.HttpResponse:
     queued = 0
     skipped_files = []
 
-    for field_name, file_storage in files.items():
+    for file_storage in all_files:
         file_name = file_storage.filename
         file_bytes = file_storage.read()
 

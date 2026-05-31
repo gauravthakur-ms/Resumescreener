@@ -4,14 +4,16 @@ import {
   FileText,
   Upload,
   Layers,
-  ChevronLeft,
-  ChevronRight,
+  UserCheck,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 
 const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/jobs', icon: FileText, label: 'Job Descriptions' },
   { path: '/upload', icon: Upload, label: 'Upload Resumes' },
+  { path: '/screened', icon: UserCheck, label: 'Screened Resumes' },
   { path: '/batches', icon: Layers, label: 'Batches' },
 ];
 
@@ -20,17 +22,12 @@ export default function Sidebar({ collapsed, setCollapsed }) {
 
   return (
     <aside
-      className={`shrink-0 h-screen bg-[rgba(10,10,10,0.90)] backdrop-blur-[8px] border-r border-dark-600 flex flex-col transition-all duration-200 z-50 ${
-        collapsed ? 'w-[72px]' : 'w-[260px]'
+      className={`shrink-0 h-full bg-gradient-to-b from-[rgba(10,10,10,0.95)] to-[rgba(8,8,8,0.98)] backdrop-blur-[12px] border-r border-dark-600 flex flex-col z-40 transition-[width] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+        collapsed ? 'w-[68px]' : 'w-[220px]'
       }`}
     >
-      {/* Logo */}
-      <div className={`flex items-center h-[72px] border-b border-dark-600 ${collapsed ? 'justify-center px-0' : 'px-5'}`}>
-        <img src="/Logo.jpg" alt="LTM" className="h-14 w-14 shrink-0 object-contain" />
-      </div>
-
       {/* Navigation */}
-      <nav className="flex-1 py-4 px-3 space-y-1">
+      <nav className="flex-1 py-5 px-2.5 space-y-1 overflow-hidden">
         {navItems.map(({ path, icon: Icon, label }) => {
           const isActive =
             path === '/'
@@ -41,33 +38,51 @@ export default function Sidebar({ collapsed, setCollapsed }) {
             <NavLink
               key={path}
               to={path}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group ${
+              className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group overflow-hidden whitespace-nowrap ${
                 isActive
-                  ? 'bg-coral/10 text-coral'
-                  : 'text-muted hover:text-white hover:bg-dark-700'
+                  ? 'bg-coral/10 text-coral shadow-[0_0_16px_rgba(255,69,68,0.08)]'
+                  : 'text-muted hover:text-white hover:bg-white/[0.04]'
               } ${collapsed ? 'justify-center' : ''}`}
               title={collapsed ? label : undefined}
             >
               <Icon
                 size={20}
-                className={isActive ? 'text-coral' : 'text-muted group-hover:text-white'}
+                className={`shrink-0 transition-all duration-200 ${isActive ? 'text-coral drop-shadow-[0_0_4px_rgba(255,69,68,0.4)]' : 'text-muted group-hover:text-white'}`}
               />
-              {!collapsed && <span>{label}</span>}
+              <span
+                className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+                  collapsed ? 'opacity-0 w-0 translate-x-[-8px]' : 'opacity-100 w-auto translate-x-0'
+                }`}
+              >
+                {label}
+              </span>
               {isActive && (
-                <div className="absolute left-0 w-[3px] h-8 bg-coral rounded-r-full" />
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-7 bg-coral rounded-r-full shadow-[0_0_6px_rgba(255,69,68,0.5)] transition-all duration-300" />
               )}
             </NavLink>
           );
         })}
       </nav>
 
-      {/* Collapse toggle */}
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="flex items-center justify-center h-12 border-t border-dark-600 text-muted hover:text-white transition-colors"
-      >
-        {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-      </button>
+      {/* Collapse toggle — clean pill button */}
+      <div className="px-3 pb-4">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium text-muted hover:text-white bg-white/[0.03] hover:bg-white/[0.06] border border-dark-600/50 hover:border-coral/30 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+            collapsed ? 'justify-center' : ''
+          }`}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? (
+            <PanelLeftOpen size={16} className="shrink-0" />
+          ) : (
+            <>
+              <PanelLeftClose size={16} className="shrink-0" />
+              <span className="transition-opacity duration-300">Collapse</span>
+            </>
+          )}
+        </button>
+      </div>
     </aside>
   );
 }

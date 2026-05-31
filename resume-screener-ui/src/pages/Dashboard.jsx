@@ -1,27 +1,32 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Upload, Layers, TrendingUp, Plus, ArrowRight } from 'lucide-react';
-import { StatCard, Card, Badge, Button, Skeleton } from '../components/UI';
-import { getJDs, healthCheck } from '../services/api';
+import { FileText, Upload, Layers, TrendingUp, Plus, ArrowRight, Users } from 'lucide-react';
+import { StatCard, Card, Badge, Skeleton } from '../components/UI';
+import { getJDs, healthCheck, getBatches } from '../services/api';
 import toast from 'react-hot-toast';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [stats, setStats] = useState({ jds: 0, healthy: false });
+  const [stats, setStats] = useState({ jds: 0, healthy: false, resumesScreened: 0 });
   const [jds, setJds] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [jdRes, healthRes] = await Promise.all([
+        const [jdRes, healthRes, batchRes] = await Promise.all([
           getJDs().catch(() => ({ data: [] })),
           healthCheck().catch(() => ({ data: { status: 'unhealthy' } })),
+          getBatches().catch(() => ({ data: [] })),
         ]);
-        setJds(Array.isArray(jdRes.data) ? jdRes.data : []);
+        const jdList = Array.isArray(jdRes.data) ? jdRes.data : [];
+        const batches = Array.isArray(batchRes.data) ? batchRes.data : [];
+        const totalScreened = batches.reduce((sum, b) => sum + (b.processed || 0), 0);
+        setJds(jdList);
         setStats({
-          jds: Array.isArray(jdRes.data) ? jdRes.data.length : 0,
+          jds: jdList.length,
           healthy: healthRes.data?.status === 'healthy',
+          resumesScreened: totalScreened,
         });
       } catch (err) {
         toast.error('Failed to load dashboard data');
@@ -48,27 +53,16 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-          <p className="text-muted mt-1">Welcome to LTM Resume Screener</p>
-        </div>
-        <div className="flex gap-3">
-          <Button variant="secondary" onClick={() => navigate('/jobs')}>
-            <Plus size={16} /> New JD
-          </Button>
-          <Button onClick={() => navigate('/upload')}>
-            <Upload size={16} /> Upload Resumes
-          </Button>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold text-white">Dashboard</h1>
+        <p className="text-muted mt-1">Welcome to LTM Resume Screener</p>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard icon={FileText} label="Job Descriptions" value={stats.jds} accent />
         <StatCard icon={Layers} label="System Status" value={stats.healthy ? 'Healthy' : 'Error'} />
-        <StatCard icon={Upload} label="Quick Action" value="Upload" />
-        <StatCard icon={TrendingUp} label="AI Powered" value="GPT-4o" />
+        <StatCard icon={Users} label="Resumes Screened" value={stats.resumesScreened} />
       </div>
 
       {/* Quick Actions */}
@@ -88,20 +82,38 @@ export default function Dashboard() {
             <p className="text-muted text-sm py-4">No job descriptions yet. Upload one to get started.</p>
           ) : (
             <div className="space-y-3">
-              {jds.slice(0, 5).map((jd) => (
-                <div
-                  key={jd.id}
-                  className="flex items-center justify-between p-3 bg-dark-700 rounded-lg"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-white">{jd.title}</p>
-                    <p className="text-xs text-muted">{jd.domain}</p>
+              {jds.slice(0, 5).map((jd) => {
+                const skills = jd.skills?.primary || [];
+                return (
+                  <div
+                    key={jd.id}
+                    className="flex items-center justify-between p-3 bg-dark-700 rounded-lg"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-white">{jd.title}</p>
+                      <p className="text-xs text-muted">{jd.domain}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-3">
+                      {skills.slice(0, 2).map((s) => (
+                        <span key={s} className="px-2 py-0.5 text-xs bg-coral/10 text-coral rounded-md">{s}</span>
+                      ))}
+                      {skills.length > 2 && (
+                        <span className="relative group">
+                          <span className="px-2 py-0.5 text-xs bg-dark-600 text-muted rounded-md cursor-default">
+                            +{skills.length - 2}
+                          </span>
+                          <span className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-dark-700 border border-coral/40 rounded-lg shadow-xl text-xs text-white whitespace-normal max-w-[220px] opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-50">
+                            {skills.slice(2).join(', ')}
+                          </span>
+                        </span>
+                      )}
+                      {skills.length === 0 && (
+                        <Badge variant="default">No skills</Badge>
+                      )}
+                    </div>
                   </div>
-                  <Badge variant="default">
-                    {jd.skills?.mandatory?.length || 0} skills
-                  </Badge>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </Card>

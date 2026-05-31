@@ -6,16 +6,11 @@ def get_recommendation(match_score: float, risk_flags: list[str], rejection_reas
     
     | Recommendation | Condition |
     |----------------|-----------|
-    | Strong Hire    | score >= 85 AND no risk flags AND no mandatory miss |
-    | Hire           | score 70-84 AND <= 1 risk flag AND no mandatory miss |
-    | Consider       | score 50-69 OR has risk flags but no mandatory miss |
-    | Reject         | score < 50 OR any mandatory skill missing |
+    | Strong Hire    | score >= 85 AND no risk flags |
+    | Hire           | score 70-84 AND <= 1 risk flag |
+    | Consider       | score 50-69 OR has risk flags |
+    | Reject         | score < 50 |
     """
-    has_mandatory_miss = any("Missing mandatory skill" in r for r in rejection_reasons)
-
-    if has_mandatory_miss:
-        return "Reject"
-
     if match_score < 50:
         return "Reject"
 

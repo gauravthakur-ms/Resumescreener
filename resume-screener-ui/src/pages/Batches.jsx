@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Layers, Search, RefreshCw, CheckCircle, Eye, BarChart3, Copy, Check } from 'lucide-react';
-import { Card, Badge, Button, ProgressBar, Skeleton } from '../components/UI';
+import { Layers, Search, RefreshCw, CheckCircle, Eye, BarChart3, Copy, Check, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Card, Badge, Button, ProgressBar, Skeleton, Modal } from '../components/UI';
 import BatchIdDisplay from '../components/BatchIdDisplay';
-import { getBatchStatus, getBatches, getJDById } from '../services/api';
+import { getBatchStatus, getBatches, getJDById, deleteBatch } from '../services/api';
 import toast from 'react-hot-toast';
 
 export default function Batches() {
@@ -19,6 +19,10 @@ export default function Batches() {
   const [batchesError, setBatchesError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const PAGE_SIZE = 10;
 
   const copyBatchId = (id) => {
     navigator.clipboard.writeText(id);
@@ -89,6 +93,25 @@ export default function Batches() {
     const map = { queued: 'queued', processing: 'processing', completed: 'completed', failed: 'failed' };
     return map[status] || 'default';
   };
+
+  const handleDeleteBatch = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteBatch(deleteTarget.id);
+      toast.success('Batch deleted');
+      setDeleteTarget(null);
+      fetchBatches();
+    } catch {
+      toast.error('Failed to delete batch');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // Pagination
+  const totalPages = Math.ceil(batches.length / PAGE_SIZE);
+  const paginatedBatches = batches.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '—';
@@ -226,12 +249,11 @@ export default function Batches() {
                   <th className="pb-3 text-muted font-medium">Resumes</th>
                   <th className="pb-3 text-muted font-medium">Uploaded At</th>
                   <th className="pb-3 text-muted font-medium">Progress</th>
-                  <th className="pb-3 text-muted font-medium">Status</th>
                   <th className="pb-3 text-muted font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-dark-600">
-                {batches.map((b) => (
+                {paginatedBatches.map((b) => (
                   <tr key={b.id} className="hover:bg-dark-700/50">
                     <td className="py-3 pr-3">
                       <span className="text-white block max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title={b.jd_title || ''}>
@@ -258,11 +280,6 @@ export default function Batches() {
                         </div>
                       )}
                     </td>
-                    <td className="py-3 pr-3">
-                      <Badge variant={getStatusVariant(b.status)}>
-                        {b.status?.toUpperCase()}
-                      </Badge>
-                    </td>
                     <td className="py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
@@ -286,15 +303,89 @@ export default function Batches() {
                         >
                           <BarChart3 size={12} /> Results
                         </button>
+                        <button
+                          onClick={() => setDeleteTarget(b)}
+                          className="flex items-center justify-center w-7 h-7 bg-dark-700 hover:bg-red-500/10 text-muted hover:text-red-400 rounded-md transition-colors"
+                          title="Delete Batch"
+                        >
+                          <Trash2 size={12} />
+                        </button>
                       </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-4 border-t border-dark-600 mt-4">
+                <p className="text-xs text-muted">
+                  Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, batches.length)} of {batches.length}
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded-md text-muted hover:text-white hover:bg-dark-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`w-7 h-7 rounded-md text-xs font-medium transition-colors ${
+                        page === currentPage
+                          ? 'bg-coral text-white'
+                          : 'text-muted hover:text-white hover:bg-dark-700'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="p-1.5 rounded-md text-muted hover:text-white hover:bg-dark-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </Card>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete Batch"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Are you sure you want to delete this batch? This action cannot be undone.
+          </p>
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setDeleteTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 !bg-red-500/20 !text-red-400 hover:!bg-red-500/30"
+              onClick={handleDeleteBatch}
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

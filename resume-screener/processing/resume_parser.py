@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 def _build_extraction_prompt(jd_skills: dict) -> str:
     """Build a dynamic extraction prompt based on JD skills."""
     all_skills = []
-    for category in ["mandatory", "primary", "secondary", "good_to_have"]:
+    for category in ["primary", "secondary"]:
         all_skills.extend(jd_skills.get(category, []))
     skills_list = ", ".join(all_skills) if all_skills else "General IT skills"
 

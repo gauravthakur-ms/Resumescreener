@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Plus, FileText, Calendar, Briefcase } from 'lucide-react';
+import { Plus, FileText, Calendar, Briefcase, Trash2, Pencil, Save, X } from 'lucide-react';
 import { Card, Button, Badge, Modal, EmptyState, Skeleton } from '../components/UI';
-import { getJDs, uploadJD, uploadJDText } from '../services/api';
+import { getJDs, getJDById, uploadJD, uploadJDText, deleteJD, updateJD } from '../services/api';
 import toast from 'react-hot-toast';
 
 export default function JobDescriptions() {
@@ -14,6 +14,14 @@ export default function JobDescriptions() {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [selectedJd, setSelectedJd] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editData, setEditData] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [projectId, setProjectId] = useState('');
+  const [projectIdError, setProjectIdError] = useState('');
 
   const fetchJDs = async () => {
     try {
@@ -28,15 +36,101 @@ export default function JobDescriptions() {
 
   useEffect(() => { fetchJDs(); }, []);
 
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteJD(deleteTarget.id);
+      toast.success('Job description deleted');
+      setDeleteTarget(null);
+      fetchJDs();
+    } catch {
+      toast.error('Failed to delete job description');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const openDetail = async (jd) => {
+    setSelectedJd(jd);
+    setEditing(false);
+    setLoadingDetail(true);
+    try {
+      const res = await getJDById(jd.id);
+      setSelectedJd(res.data);
+    } catch {
+      // Keep the summary data if full fetch fails
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const startEditing = () => {
+    setEditData({
+      title: selectedJd.title || '',
+      project_id: selectedJd.project_id || '',
+      domain: selectedJd.domain || '',
+      min_experience_years: selectedJd.min_experience_years || 0,
+      skills: {
+        primary: (selectedJd.skills?.primary || []).join(', '),
+        secondary: (selectedJd.skills?.secondary || []).join(', '),
+      },
+      certifications_preferred: (selectedJd.certifications_preferred || []).join(', '),
+      scoring_weights: { ...(selectedJd.scoring_weights || {}) },
+      thresholds: { ...(selectedJd.thresholds || {}) },
+    });
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    if (!editData.project_id?.trim()) {
+      toast.error('Project ID is required');
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        title: editData.title,
+        project_id: editData.project_id.trim(),
+        domain: editData.domain,
+        min_experience_years: parseFloat(editData.min_experience_years) || 0,
+        skills: {
+          primary: editData.skills.primary.split(',').map(s => s.trim()).filter(Boolean),
+          secondary: editData.skills.secondary.split(',').map(s => s.trim()).filter(Boolean),
+        },
+        certifications_preferred: editData.certifications_preferred.split(',').map(s => s.trim()).filter(Boolean),
+        scoring_weights: editData.scoring_weights,
+        thresholds: {
+          selected: parseInt(editData.thresholds.selected) || 70,
+          need_review: parseInt(editData.thresholds.need_review) || 50,
+        },
+      };
+      const res = await updateJD(selectedJd.id, payload);
+      setSelectedJd(res.data);
+      setEditing(false);
+      toast.success('Job description updated');
+      fetchJDs();
+    } catch {
+      toast.error('Failed to update job description');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleUpload = async () => {
+    if (!projectId.trim()) {
+      setProjectIdError('Project ID is required');
+      return;
+    }
     setUploading(true);
     try {
       if (uploadMode === 'file' && file) {
         const formData = new FormData();
         formData.append('jd_file', file);
+        formData.append('project_id', projectId.trim());
         await uploadJD(formData);
       } else if (uploadMode === 'text' && text.trim()) {
-        await uploadJDText(text, title);
+        await uploadJDText(text, title, projectId.trim());
       } else {
         toast.error('Please provide a file or text');
         setUploading(false);
@@ -47,12 +141,20 @@ export default function JobDescriptions() {
       setFile(null);
       setText('');
       setTitle('');
+      setProjectId('');
+      setProjectIdError('');
       fetchJDs();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Upload failed');
     } finally {
       setUploading(false);
     }
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
   if (loading) {
@@ -98,27 +200,48 @@ export default function JobDescriptions() {
           {jds.map((jd) => (
             <Card
               key={jd.id}
-              className="cursor-pointer hover:border-coral/40 transition-colors"
-              onClick={() => setSelectedJd(jd)}
+              className="cursor-pointer hover:border-coral/40 transition-colors !p-4"
+              onClick={() => openDetail(jd)}
             >
-              <div className="flex items-start justify-between mb-3">
-                <div className="w-10 h-10 rounded-lg bg-coral/10 flex items-center justify-center">
-                  <Briefcase size={18} className="text-coral" />
+              {/* Line 1 — Icon + Job ID + Delete */}
+              <div className="flex items-center gap-2.5 mb-2">
+                <div className="w-9 h-9 rounded-lg bg-coral/10 flex items-center justify-center shrink-0">
+                  <Briefcase size={16} className="text-coral" />
                 </div>
-                <Badge variant="default">{jd.domain || 'General'}</Badge>
+                <span className="text-[13px] font-semibold font-mono text-coral flex-1 min-w-0 truncate">
+                  {jd.project_id || '—'}
+                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Badge variant="default">{jd.domain || 'General'}</Badge>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setDeleteTarget(jd); }}
+                    className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    title="Delete"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
-              <h3 className="text-base font-semibold text-white mb-2 line-clamp-2">
+
+              {/* Line 2 — Job Role */}
+              <h3 className="text-[15px] font-bold text-white truncate mb-1.5">
                 {jd.title}
               </h3>
-              <div className="flex items-center gap-4 text-xs text-muted">
-                <span className="flex items-center gap-1">
-                  <Calendar size={12} />
-                  {new Date(jd.uploaded_at).toLocaleDateString()}
-                </span>
-                <span>{jd.min_experience_years || 0}+ yrs exp</span>
+
+              {/* Line 3 — Experience Required */}
+              <p className="text-[13px] text-white truncate mb-1.5">
+                {jd.min_experience_years || 0}+ yrs exp
+              </p>
+
+              {/* Line 4 — Date Posted */}
+              <div className="flex items-center gap-1 text-xs text-[#888] mb-2.5">
+                <Calendar size={12} />
+                {formatDate(jd.uploaded_at)}
               </div>
-              <div className="flex flex-wrap gap-1.5 mt-3">
-                {(jd.skills?.mandatory || []).slice(0, 4).map((skill) => (
+
+              {/* Line 5 — Skills Pills */}
+              <div className="flex flex-wrap gap-1.5">
+                {(jd.skills?.primary || []).slice(0, 8).map((skill) => (
                   <span
                     key={skill}
                     className="px-2 py-0.5 text-xs bg-coral/10 text-coral rounded-md"
@@ -126,9 +249,14 @@ export default function JobDescriptions() {
                     {skill}
                   </span>
                 ))}
-                {(jd.skills?.mandatory?.length || 0) > 4 && (
-                  <span className="px-2 py-0.5 text-xs bg-dark-700 text-muted rounded-md">
-                    +{jd.skills.mandatory.length - 4}
+                {(jd.skills?.primary?.length || 0) > 8 && (
+                  <span className="relative group">
+                    <span className="px-2 py-0.5 text-xs bg-dark-700 text-muted rounded-md cursor-default">
+                      +{jd.skills.primary.length - 8}
+                    </span>
+                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-dark-700 border border-coral/40 rounded-lg shadow-xl text-xs text-white whitespace-normal max-w-[220px] opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-50">
+                      {jd.skills.primary.slice(8).join(', ')}
+                    </span>
                   </span>
                 )}
               </div>
@@ -138,8 +266,28 @@ export default function JobDescriptions() {
       )}
 
       {/* Upload Modal */}
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Upload Job Description">
+      <Modal isOpen={showModal} onClose={() => { setShowModal(false); setProjectIdError(''); }} title="Upload Job Description">
         <div className="space-y-4">
+          {/* Project ID — mandatory first field */}
+          <div>
+            <label className="text-xs text-muted block mb-1">
+              Project ID <span className="text-coral">*</span>
+            </label>
+            <input
+              type="text"
+              placeholder="Enter Project ID (e.g. PROJ-2024-001)"
+              value={projectId}
+              onChange={(e) => { setProjectId(e.target.value); if (e.target.value.trim()) setProjectIdError(''); }}
+              onBlur={() => { if (!projectId.trim()) setProjectIdError('Project ID is required'); }}
+              className={`w-full px-3.5 py-2.5 bg-[#1a1a1a] border rounded-lg text-[#f5f5f5] text-sm placeholder:text-muted focus:outline-none focus:border-coral focus:shadow-[0_0_0_2px_rgba(255,69,68,0.15)] ${
+                projectIdError ? 'border-coral bg-[rgba(255,69,68,0.05)]' : 'border-[#333]'
+              }`}
+            />
+            {projectIdError && (
+              <p className="text-coral text-xs mt-1">⚠ {projectIdError}</p>
+            )}
+          </div>
+
           {/* Toggle */}
           <div className="flex bg-dark-700 rounded-lg p-1">
             <button
@@ -199,14 +347,14 @@ export default function JobDescriptions() {
             <Button
               variant="secondary"
               className="flex-1"
-              onClick={() => setShowModal(false)}
+              onClick={() => { setShowModal(false); setProjectIdError(''); }}
             >
               Cancel
             </Button>
             <Button
               className="flex-1"
               onClick={handleUpload}
-              disabled={uploading}
+              disabled={uploading || !projectId.trim()}
             >
               {uploading ? 'Uploading...' : 'Upload'}
             </Button>
@@ -217,68 +365,284 @@ export default function JobDescriptions() {
       {/* JD Detail Modal */}
       <Modal
         isOpen={!!selectedJd}
-        onClose={() => setSelectedJd(null)}
-        title={selectedJd?.title || 'Job Description'}
+        onClose={() => { setSelectedJd(null); setEditing(false); }}
+        title={editing ? 'Edit Job Description' : (selectedJd?.title || 'Job Description')}
+        wide
       >
-        {selectedJd && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+        {selectedJd && !editing && (
+          <div className="space-y-5 max-h-[65vh] overflow-y-auto pr-1">
+            {loadingDetail ? (
+              <div className="space-y-3">
+                {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 rounded-lg" />)}
+              </div>
+            ) : (
+              <>
+                {/* Top Info Row */}
+                <div className="grid grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-xs text-muted">Domain</p>
+                    <p className="text-sm text-white font-medium">{selectedJd.domain || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted">Project ID</p>
+                    <p className="text-sm font-mono text-coral">{selectedJd.project_id || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted">Min Experience</p>
+                    <p className="text-sm text-white font-medium">{selectedJd.min_experience_years || 0}+ years</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted">Uploaded</p>
+                    <p className="text-sm text-white font-medium">{formatDate(selectedJd.uploaded_at)}</p>
+                  </div>
+                </div>
+
+                {/* Two-column skills layout */}
+                <div className="grid grid-cols-2 gap-5">
+                  {/* Left column */}
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-xs text-muted mb-2">Primary Skills</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(selectedJd.skills?.primary || []).map((s) => (
+                          <span key={s} className="px-2 py-1 text-xs bg-coral/10 text-coral rounded-md">{s}</span>
+                        ))}
+                        {(selectedJd.skills?.primary || []).length === 0 && <span className="text-xs text-muted">None specified</span>}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-muted mb-2">Certifications Preferred</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(selectedJd.certifications_preferred || []).map((s) => (
+                          <span key={s} className="px-2 py-1 text-xs bg-purple-500/10 text-purple-400 rounded-md">{s}</span>
+                        ))}
+                        {(selectedJd.certifications_preferred || []).length === 0 && <span className="text-xs text-muted">None specified</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right column */}
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-xs text-muted mb-2">Secondary Skills</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(selectedJd.skills?.secondary || []).map((s) => (
+                          <span key={s} className="px-2 py-1 text-xs bg-blue-500/10 text-blue-400 rounded-md">{s}</span>
+                        ))}
+                        {(selectedJd.skills?.secondary || []).length === 0 && <span className="text-xs text-muted">None specified</span>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom row — Scoring & Thresholds side by side */}
+                <div className="grid grid-cols-2 gap-5 pt-2 border-t border-dark-600">
+                  <div>
+                    <p className="text-xs text-muted mb-2">Scoring Weights</p>
+                    <div className="space-y-1.5">
+                      {Object.entries(selectedJd.scoring_weights || {}).map(([k, v]) => (
+                        <div key={k} className="flex items-center justify-between text-xs">
+                          <span className="text-muted capitalize">{k.replace(/_/g, ' ')}</span>
+                          <span className="text-white font-medium">{(v * 100).toFixed(0)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted mb-2">Thresholds</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-dark-700 rounded-lg p-3 text-center">
+                        <p className="text-lg font-bold text-green-400">{selectedJd.thresholds?.selected || 70}%</p>
+                        <p className="text-xs text-muted">Selected</p>
+                      </div>
+                      <div className="bg-dark-700 rounded-lg p-3 text-center">
+                        <p className="text-lg font-bold text-yellow-400">{selectedJd.thresholds?.need_review || 50}%</p>
+                        <p className="text-xs text-muted">Needs Review</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="flex gap-3 pt-3 border-t border-dark-600">
+              <Button variant="secondary" className="flex-1" onClick={() => setSelectedJd(null)}>
+                Close
+              </Button>
+              <Button className="flex-1" onClick={startEditing}>
+                <Pencil size={14} /> Edit
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {selectedJd && editing && editData && (
+          <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+            <div>
+              <label className="text-xs text-muted block mb-1">Project ID <span className="text-coral">*</span></label>
+              <input
+                type="text"
+                placeholder="Enter Project ID (e.g. PROJ-2024-001)"
+                value={editData.project_id}
+                onChange={(e) => setEditData({ ...editData, project_id: e.target.value })}
+                className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-coral"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-xs text-muted">Domain</p>
-                <p className="text-sm text-white">{selectedJd.domain || 'N/A'}</p>
+                <label className="text-xs text-muted block mb-1">Title</label>
+                <input
+                  type="text"
+                  value={editData.title}
+                  onChange={(e) => setEditData({ ...editData, title: e.target.value })}
+                  className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral"
+                />
               </div>
               <div>
-                <p className="text-xs text-muted">Min Experience</p>
-                <p className="text-sm text-white">{selectedJd.min_experience_years || 0} years</p>
+                <label className="text-xs text-muted block mb-1">Domain</label>
+                <input
+                  type="text"
+                  value={editData.domain}
+                  onChange={(e) => setEditData({ ...editData, domain: e.target.value })}
+                  className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral"
+                />
               </div>
             </div>
 
             <div>
-              <p className="text-xs text-muted mb-2">Mandatory Skills</p>
-              <div className="flex flex-wrap gap-1.5">
-                {(selectedJd.skills?.mandatory || []).map((s) => (
-                  <span key={s} className="px-2 py-1 text-xs bg-red-500/10 text-red-400 rounded-md">
-                    {s}
-                  </span>
-                ))}
-              </div>
+              <label className="text-xs text-muted block mb-1">Min Experience (years)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                value={editData.min_experience_years}
+                onChange={(e) => setEditData({ ...editData, min_experience_years: e.target.value })}
+                className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral"
+              />
             </div>
 
             <div>
-              <p className="text-xs text-muted mb-2">Primary Skills</p>
-              <div className="flex flex-wrap gap-1.5">
-                {(selectedJd.skills?.primary || []).map((s) => (
-                  <span key={s} className="px-2 py-1 text-xs bg-blue-500/10 text-blue-400 rounded-md">
-                    {s}
-                  </span>
-                ))}
-              </div>
+              <label className="text-xs text-muted block mb-1">Primary Skills <span className="text-muted">(comma-separated)</span></label>
+              <textarea
+                rows={2}
+                value={editData.skills.primary}
+                onChange={(e) => setEditData({ ...editData, skills: { ...editData.skills, primary: e.target.value } })}
+                className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral resize-none"
+              />
             </div>
 
             <div>
-              <p className="text-xs text-muted mb-2">Secondary / Good to Have</p>
-              <div className="flex flex-wrap gap-1.5">
-                {[...(selectedJd.skills?.secondary || []), ...(selectedJd.skills?.good_to_have || [])].map((s) => (
-                  <span key={s} className="px-2 py-1 text-xs bg-dark-700 text-muted rounded-md">
-                    {s}
-                  </span>
-                ))}
-              </div>
+              <label className="text-xs text-muted block mb-1">Secondary Skills <span className="text-muted">(comma-separated)</span></label>
+              <textarea
+                rows={2}
+                value={editData.skills.secondary}
+                onChange={(e) => setEditData({ ...editData, skills: { ...editData.skills, secondary: e.target.value } })}
+                className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral resize-none"
+              />
             </div>
 
             <div>
-              <p className="text-xs text-muted mb-2">Scoring Weights</p>
-              <div className="space-y-1.5">
-                {Object.entries(selectedJd.scoring_weights || {}).map(([k, v]) => (
-                  <div key={k} className="flex items-center justify-between text-xs">
-                    <span className="text-muted capitalize">{k.replace('_', ' ')}</span>
-                    <span className="text-white">{(v * 100).toFixed(0)}%</span>
+              <label className="text-xs text-muted block mb-1">Certifications Preferred <span className="text-muted">(comma-separated)</span></label>
+              <input
+                type="text"
+                value={editData.certifications_preferred}
+                onChange={(e) => setEditData({ ...editData, certifications_preferred: e.target.value })}
+                className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-muted block mb-2">Scoring Weights</label>
+              <div className="grid grid-cols-2 gap-3">
+                {Object.entries(editData.scoring_weights).map(([k, v]) => (
+                  <div key={k}>
+                    <label className="text-xs text-muted capitalize block mb-1">{k.replace(/_/g, ' ')}</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={v}
+                      onChange={(e) => setEditData({
+                        ...editData,
+                        scoring_weights: { ...editData.scoring_weights, [k]: parseFloat(e.target.value) || 0 }
+                      })}
+                      className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral"
+                    />
                   </div>
                 ))}
               </div>
             </div>
+
+            <div>
+              <label className="text-xs text-muted block mb-2">Thresholds (%)</label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted block mb-1">Selected</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={editData.thresholds.selected}
+                    onChange={(e) => setEditData({ ...editData, thresholds: { ...editData.thresholds, selected: e.target.value } })}
+                    className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted block mb-1">Needs Review</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={editData.thresholds.need_review}
+                    onChange={(e) => setEditData({ ...editData, thresholds: { ...editData.thresholds, need_review: e.target.value } })}
+                    className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-3 border-t border-dark-600">
+              <Button variant="secondary" className="flex-1" onClick={() => setEditing(false)}>
+                <X size={14} /> Cancel
+              </Button>
+              <Button className="flex-1" onClick={handleSave} disabled={saving || !editData.project_id?.trim()}>
+                <Save size={14} /> {saving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </div>
           </div>
         )}
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete Job Description"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Are you sure you want to delete <span className="text-white font-medium">"{deleteTarget?.title}"</span>? This action cannot be undone.
+          </p>
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setDeleteTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 !bg-red-500/20 !text-red-400 hover:!bg-red-500/30"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

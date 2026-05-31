@@ -56,6 +56,16 @@ def list_jds() -> list[dict]:
     return list(container.query_items(query=query, enable_cross_partition_query=True))
 
 
+def delete_jd(jd_id: str) -> bool:
+    """Delete a JD by its ID. Returns True if deleted, False if not found."""
+    container = _get_container(COSMOS_CONTAINER_JD)
+    try:
+        container.delete_item(item=jd_id, partition_key=jd_id)
+        return True
+    except exceptions.CosmosResourceNotFoundError:
+        return False
+
+
 # --- Candidates ---
 
 def upsert_candidate(candidate_data: dict) -> dict:
@@ -96,6 +106,28 @@ def get_candidates_by_batch(batch_id: str, top: int = None, sort_by: str = "matc
     if top:
         return results[:top]
     return results
+
+
+def get_candidates_by_jd(jd_id: str) -> list[dict]:
+    """Get all candidates screened against a specific JD."""
+    container = _get_container(COSMOS_CONTAINER_CANDIDATES)
+    query = "SELECT * FROM c WHERE c.jd_id = @jd_id ORDER BY c.scoring.match_score DESC"
+    parameters = [{"name": "@jd_id", "value": jd_id}]
+    return list(container.query_items(
+        query=query,
+        parameters=parameters,
+        enable_cross_partition_query=True,
+    ))
+
+
+def delete_candidate(candidate_id: str, jd_id: str) -> bool:
+    """Delete a candidate by ID. Returns True if deleted."""
+    container = _get_container(COSMOS_CONTAINER_CANDIDATES)
+    try:
+        container.delete_item(item=candidate_id, partition_key=jd_id)
+        return True
+    except exceptions.CosmosResourceNotFoundError:
+        return False
 
 
 def check_duplicate_by_hash(jd_id: str, resume_hash: str) -> dict | None:
@@ -171,6 +203,16 @@ def list_batches(limit: int = 20) -> list[dict]:
     ))
 
 
+def delete_batch(batch_id: str) -> bool:
+    """Delete a batch by its ID. Returns True if deleted, False if not found."""
+    container = _get_container(COSMOS_CONTAINER_BATCHES)
+    try:
+        container.delete_item(item=batch_id, partition_key=batch_id)
+        return True
+    except exceptions.CosmosResourceNotFoundError:
+        return False
+
+
 def increment_batch_counter(batch_id: str, field: str):
     """Increment a counter field on a batch document (processed, failed, duplicates)."""
     batch = get_batch(batch_id)
@@ -179,6 +221,10 @@ def increment_batch_counter(batch_id: str, field: str):
         # Check if all processed
         total = batch.get("total", 0)
         done = batch.get("processed", 0) + batch.get("failed", 0) + batch.get("duplicates", 0)
+        # If done exceeds total (e.g. due to retries), adjust total
+        if done > total:
+            batch["total"] = done
+            total = done
         if done >= total:
             batch["status"] = "completed"
             from datetime import datetime

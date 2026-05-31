@@ -59,10 +59,8 @@ def match_candidate_skills(
     candidate_skills_list = list(all_candidate_skills)
 
     matched = SkillsMatched(
-        mandatory=match_skills_against_jd(candidate_skills_list, skills_config.get("mandatory", [])),
         primary=match_skills_against_jd(candidate_skills_list, skills_config.get("primary", [])),
         secondary=match_skills_against_jd(candidate_skills_list, skills_config.get("secondary", [])),
-        good_to_have=match_skills_against_jd(candidate_skills_list, skills_config.get("good_to_have", [])),
     )
     return matched
 
@@ -77,30 +75,28 @@ def calculate_score(
     """Calculate match score using JD-defined weights.
     
     Formula:
-        mandatory_score  = (matched / total) * weight * 100
         primary_score    = (matched / total) * weight * 100
+        secondary_score  = (matched / total) * weight * 100
         experience_score = min(actual / required, 1.0) * weight * 100
         cert_score       = (matched / max(total, 1)) * weight * 100
-        secondary_score  = (matched / total) * weight * 100
         risk_penalty     = -5 per risk flag (max -15)
         match_score      = sum, clamped to [0, 100]
     """
     weights = jd.get("scoring_weights", {})
-    w_mandatory = weights.get("mandatory_skills", 0.40)
-    w_primary = weights.get("primary_skills", 0.25)
-    w_experience = weights.get("experience", 0.20)
+    w_primary = weights.get("primary_skills", 0.40)
+    w_secondary = weights.get("secondary_skills", 0.25)
+    w_experience = weights.get("experience", 0.25)
     w_certs = weights.get("certifications", 0.10)
-    w_secondary = weights.get("secondary_skills", 0.05)
-
-    # Mandatory
-    mandatory_matched = sum(1 for v in skills_matched.mandatory.values() if v)
-    mandatory_total = max(len(skills_matched.mandatory), 1)
-    mandatory_score = (mandatory_matched / mandatory_total) * w_mandatory * 100
 
     # Primary
     primary_matched = sum(1 for v in skills_matched.primary.values() if v)
     primary_total = max(len(skills_matched.primary), 1)
     primary_score = (primary_matched / primary_total) * w_primary * 100
+
+    # Secondary
+    secondary_matched = sum(1 for v in skills_matched.secondary.values() if v)
+    secondary_total = max(len(skills_matched.secondary), 1)
+    secondary_score = (secondary_matched / secondary_total) * w_secondary * 100
 
     # Experience
     min_exp = jd.get("min_experience_years", 1)
@@ -114,28 +110,22 @@ def calculate_score(
     certs_total = max(len(certs_preferred), 1)
     certification_score = (certs_matched / certs_total) * w_certs * 100
 
-    # Secondary
-    secondary_matched = sum(1 for v in skills_matched.secondary.values() if v)
-    secondary_total = max(len(skills_matched.secondary), 1)
-    secondary_score = (secondary_matched / secondary_total) * w_secondary * 100
-
     # Risk penalty
     risk_penalty = min(len(risk_flags) * -5.0, 0)  # Max -15
 
     # Total
     match_score = (
-        mandatory_score + primary_score + experience_score +
-        certification_score + secondary_score + risk_penalty
+        primary_score + secondary_score + experience_score +
+        certification_score + risk_penalty
     )
     match_score = round(max(0, min(100, match_score)), 1)
 
     return Scoring(
         match_score=match_score,
-        mandatory_score=round(mandatory_score, 1),
         primary_score=round(primary_score, 1),
+        secondary_score=round(secondary_score, 1),
         experience_score=round(experience_score, 1),
         certification_score=round(certification_score, 1),
-        secondary_score=round(secondary_score, 1),
         risk_penalty=round(risk_penalty, 1),
     )
 
@@ -144,10 +134,13 @@ def get_rejection_reasons(skills_matched: SkillsMatched, total_exp: float, jd: d
     """Generate explicit rejection reasons."""
     reasons = []
 
-    # Check mandatory skills
-    for skill, matched in skills_matched.mandatory.items():
-        if not matched:
-            reasons.append(f"Missing mandatory skill: {skill}")
+    # Check primary skills — if less than half matched, flag it
+    primary_matched = sum(1 for v in skills_matched.primary.values() if v)
+    primary_total = len(skills_matched.primary)
+    if primary_total > 0 and primary_matched < primary_total * 0.5:
+        missing = [s for s, v in skills_matched.primary.items() if not v]
+        for skill in missing[:3]:  # Report up to 3
+            reasons.append(f"Missing primary skill: {skill}")
 
     # Check minimum experience
     min_exp = jd.get("min_experience_years", 0)
@@ -162,10 +155,6 @@ def classify_candidate(match_score: float, rejection_reasons: list[str], jd: dic
     
     Returns: 'selected', 'rejected', or 'need-review'
     """
-    # Any mandatory miss = rejected regardless of score
-    if any("Missing mandatory skill" in r for r in rejection_reasons):
-        return "rejected"
-
     thresholds = jd.get("thresholds", {})
     selected_threshold = thresholds.get("selected", 70)
     review_threshold = thresholds.get("need_review", 50)

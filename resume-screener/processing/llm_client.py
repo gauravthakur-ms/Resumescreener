@@ -79,11 +79,23 @@ def call_llm(
                 )
                 return content, usage
 
-            except (RateLimitError, APIError) as e:
+            except RateLimitError as e:
+                last_error = e
+                # Exponential backoff for rate limits: 10s, 20s, 40s
+                wait_time = 10 * (2 ** (attempt - 1))
+                log_with_context(
+                    logger, "WARNING",
+                    f"Rate limited (model={model}, attempt={attempt}), waiting {wait_time}s: {e}",
+                    trace_id=trace_id, stage=stage,
+                )
+                if attempt < MAX_RETRIES:
+                    time.sleep(wait_time)
+
+            except APIError as e:
                 last_error = e
                 log_with_context(
                     logger, "WARNING",
-                    f"LLM call failed (model={model}, attempt={attempt}): {e}",
+                    f"API error (model={model}, attempt={attempt}): {e}",
                     trace_id=trace_id, stage=stage,
                 )
                 if attempt < MAX_RETRIES:

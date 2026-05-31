@@ -8,7 +8,7 @@ from datetime import datetime
 from processing.text_extractor import extract_text
 from processing.jd_parser import parse_jd
 from storage.blob_client import upload_jd_file
-from storage.cosmos_client import upsert_jd, get_jd, list_jds
+from storage.cosmos_client import upsert_jd, get_jd, list_jds, delete_jd
 from models.jd_model import JobDescription, SkillsConfig, ScoringWeights, Thresholds
 from utils.logger import get_logger, log_with_context
 
@@ -31,6 +31,7 @@ def handle_jd_upload(req: func.HttpRequest) -> func.HttpResponse:
         jd_text = None
         file_name = None
         file_bytes = None
+        project_id = ""
 
         # Check for file upload (multipart)
         files = req.files
@@ -39,6 +40,9 @@ def handle_jd_upload(req: func.HttpRequest) -> func.HttpResponse:
                 file_bytes = file_storage.read()
                 file_name = file_storage.filename
                 break
+
+            # Extract project_id from form params for file uploads
+            project_id = req.params.get("project_id", "") or req.form.get("project_id", "")
 
             if file_bytes and file_name:
                 # Validate file size
@@ -55,6 +59,7 @@ def handle_jd_upload(req: func.HttpRequest) -> func.HttpResponse:
             try:
                 body = req.get_json()
                 jd_text = body.get("text", "")
+                project_id = body.get("project_id", "")
             except ValueError:
                 pass
 
@@ -79,6 +84,7 @@ def handle_jd_upload(req: func.HttpRequest) -> func.HttpResponse:
         jd = JobDescription(
             id=jd_id,
             title=parsed.get("title", "Untitled Role"),
+            project_id=project_id,
             domain=parsed.get("domain", "General"),
             min_experience_years=parsed.get("min_experience_years", 0),
             skills=SkillsConfig(**parsed.get("skills", {})),
@@ -136,6 +142,7 @@ def handle_get_jds(req: func.HttpRequest) -> func.HttpResponse:
             result.append({
                 "id": jd.get("id"),
                 "title": jd.get("title"),
+                "project_id": jd.get("project_id", ""),
                 "domain": jd.get("domain"),
                 "uploaded_at": jd.get("uploaded_at"),
                 "min_experience_years": jd.get("min_experience_years"),
@@ -181,6 +188,80 @@ def handle_get_jd_by_id(req: func.HttpRequest) -> func.HttpResponse:
 
     return func.HttpResponse(
         json.dumps(jd),
+        status_code=200,
+        mimetype="application/json",
+    )
+
+
+def handle_delete_jd(req: func.HttpRequest) -> func.HttpResponse:
+    """DELETE /api/jd/{jd_id} — Delete a specific JD."""
+    jd_id = req.route_params.get("jd_id")
+    if not jd_id:
+        return func.HttpResponse(
+            json.dumps({"error": "jd_id is required"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    deleted = delete_jd(jd_id)
+    if not deleted:
+        return func.HttpResponse(
+            json.dumps({"error": f"JD not found: {jd_id}"}),
+            status_code=404,
+            mimetype="application/json",
+        )
+
+    logger.info(f"Deleted JD: {jd_id}")
+    return func.HttpResponse(
+        json.dumps({"message": f"JD deleted successfully", "id": jd_id}),
+        status_code=200,
+        mimetype="application/json",
+    )
+
+
+def handle_update_jd(req: func.HttpRequest) -> func.HttpResponse:
+    """PUT /api/jd/{jd_id} — Update an existing JD's fields."""
+    jd_id = req.route_params.get("jd_id")
+    if not jd_id:
+        return func.HttpResponse(
+            json.dumps({"error": "jd_id is required"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    existing = get_jd(jd_id)
+    if not existing:
+        return func.HttpResponse(
+            json.dumps({"error": f"JD not found: {jd_id}"}),
+            status_code=404,
+            mimetype="application/json",
+        )
+
+    try:
+        body = req.get_json()
+    except ValueError:
+        return func.HttpResponse(
+            json.dumps({"error": "Invalid JSON body"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    # Update allowed fields
+    updatable = ["title", "project_id", "domain", "min_experience_years", "skills",
+                 "certifications_preferred", "scoring_weights", "thresholds"]
+    for field in updatable:
+        if field in body:
+            existing[field] = body[field]
+
+    upsert_jd(existing)
+    logger.info(f"Updated JD: {jd_id}")
+
+    # Remove Cosmos metadata before returning
+    for key in ["_rid", "_self", "_etag", "_attachments", "_ts"]:
+        existing.pop(key, None)
+
+    return func.HttpResponse(
+        json.dumps(existing),
         status_code=200,
         mimetype="application/json",
     )

@@ -6,18 +6,15 @@ from datetime import datetime
 
 
 class SkillsConfig(BaseModel):
-    mandatory: list[str] = Field(default_factory=list)
     primary: list[str] = Field(default_factory=list)
     secondary: list[str] = Field(default_factory=list)
-    good_to_have: list[str] = Field(default_factory=list)
 
 
 class ScoringWeights(BaseModel):
-    mandatory_skills: float = 0.40
-    primary_skills: float = 0.25
-    experience: float = 0.20
+    primary_skills: float = 0.40
+    secondary_skills: float = 0.25
+    experience: float = 0.25
     certifications: float = 0.10
-    secondary_skills: float = 0.05
 
 
 class Thresholds(BaseModel):
@@ -28,6 +25,7 @@ class Thresholds(BaseModel):
 class JobDescription(BaseModel):
     id: str
     title: str
+    project_id: str = ""
     uploaded_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
     domain: str = "General"
     min_experience_years: float = 0

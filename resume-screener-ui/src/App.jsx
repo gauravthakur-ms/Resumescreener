@@ -6,6 +6,8 @@ import JobDescriptions from './pages/JobDescriptions';
 import ResumeUpload from './pages/ResumeUpload';
 import Batches from './pages/Batches';
 import BatchResults from './pages/BatchResults';
+import ScreenedResumes from './pages/ScreenedResumes';
+import JDResults from './pages/JDResults';
 
 function App() {
   return (
@@ -25,6 +27,8 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/jobs" element={<JobDescriptions />} />
           <Route path="/upload" element={<ResumeUpload />} />
+          <Route path="/screened" element={<ScreenedResumes />} />
+          <Route path="/screened/:jdId/results" element={<JDResults />} />
           <Route path="/batches" element={<Batches />} />
           <Route path="/batches/:batchId/results" element={<BatchResults />} />
         </Routes>

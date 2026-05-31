@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, FileCheck, AlertCircle, X } from 'lucide-react';
+import { Upload, FileCheck, AlertCircle, X, CheckCircle, Clock, Copy, Loader } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
-import { Card, Button, Badge } from '../components/UI';
+import { Card, Button, Badge, Modal, ProgressBar } from '../components/UI';
 import BatchIdDisplay from '../components/BatchIdDisplay';
-import { getJDs, uploadResumes } from '../services/api';
+import { getJDs, uploadResumes, getBatchStatus } from '../services/api';
 import toast from 'react-hot-toast';
 
 export default function ResumeUpload() {
@@ -15,11 +15,76 @@ export default function ResumeUpload() {
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState(null);
 
+  // Progress modal state
+  const [showProgress, setShowProgress] = useState(false);
+  const [progressData, setProgressData] = useState(null);
+  const pollingRef = useRef(null);
+
   useEffect(() => {
     getJDs()
       .then((res) => setJds(Array.isArray(res.data) ? res.data : []))
       .catch(() => toast.error('Failed to load job descriptions'));
   }, []);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, []);
+
+  const startPolling = (batchId, uploadResult) => {
+    // Initialize progress with upload result
+    setProgressData({
+      batch_id: batchId,
+      total: uploadResult.total_uploaded,
+      queued: uploadResult.queued_for_processing,
+      duplicates: uploadResult.duplicates_skipped || 0,
+      processed: 0,
+      failed: 0,
+      pending: uploadResult.queued_for_processing,
+      progress_pct: 0,
+      status: 'queued',
+    });
+    setShowProgress(true);
+
+    // If nothing queued (all duplicates), mark as done immediately
+    if (uploadResult.queued_for_processing === 0) {
+      setProgressData((prev) => ({ ...prev, status: 'completed', progress_pct: 100 }));
+      return;
+    }
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await getBatchStatus(batchId);
+        const d = res.data;
+        setProgressData((prev) => ({
+          ...prev,
+          processed: d.processed,
+          failed: d.failed,
+          pending: d.pending,
+          progress_pct: d.progress_pct,
+          status: d.status,
+        }));
+
+        if (d.status === 'completed' || d.status === 'failed' || d.pending === 0) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+      } catch {
+        // Silently retry on next interval
+      }
+    }, 2500);
+  };
+
+  const closeProgress = () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    setShowProgress(false);
+    setProgressData(null);
+  };
 
   const onDrop = useCallback((acceptedFiles, rejectedFiles) => {
     setFiles((prev) => [...prev, ...acceptedFiles]);
@@ -57,8 +122,9 @@ export default function ResumeUpload() {
       files.forEach((f) => formData.append('files', f));
       const res = await uploadResumes(selectedJd, formData);
       setResult(res.data);
-      toast.success(`${res.data.queued_for_processing || files.length} resume(s) queued for processing!`);
       setFiles([]);
+      // Open progress modal and start polling
+      startPolling(res.data.batch_id, res.data);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Upload failed');
     } finally {
@@ -225,7 +291,7 @@ export default function ResumeUpload() {
               <div className="space-y-3 text-sm text-muted">
                 <div className="flex items-start gap-2">
                   <AlertCircle size={16} className="text-coral mt-0.5 shrink-0" />
-                  <p>Select a JD first — resumes will be screened against its criteria</p>
+                  <p>Select a JD first resumes will be screened against its criteria</p>
                 </div>
                 <div className="flex items-start gap-2">
                   <AlertCircle size={16} className="text-coral mt-0.5 shrink-0" />
@@ -237,13 +303,109 @@ export default function ResumeUpload() {
                 </div>
                 <div className="flex items-start gap-2">
                   <AlertCircle size={16} className="text-coral mt-0.5 shrink-0" />
-                  <p>Processing is async — check batch status for progress</p>
+                  <p>Processing is async check batch status for progress</p>
                 </div>
               </div>
             </Card>
           )}
         </div>
       </div>
+
+      {/* Processing Progress Modal */}
+      <Modal
+        isOpen={showProgress}
+        onClose={closeProgress}
+        title="Resume Processing"
+      >
+        {progressData && (
+          <div className="space-y-5">
+            {/* Summary Stats */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-dark-700 rounded-lg p-3 text-center">
+                <p className="text-lg font-bold text-white">{progressData.total}</p>
+                <p className="text-xs text-muted">Total Uploaded</p>
+              </div>
+              <div className="bg-dark-700 rounded-lg p-3 text-center">
+                <p className="text-lg font-bold text-blue-400">{progressData.queued}</p>
+                <p className="text-xs text-muted">Queued</p>
+              </div>
+              <div className="bg-dark-700 rounded-lg p-3 text-center">
+                <p className="text-lg font-bold text-yellow-400">{progressData.duplicates}</p>
+                <p className="text-xs text-muted">Duplicates Skipped</p>
+              </div>
+            </div>
+
+            {/* Progress Section */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-white font-medium">Processing Status</p>
+                <Badge variant={progressData.status === 'completed' ? 'completed' : 'processing'}>
+                  {progressData.status === 'completed' ? 'Completed' : progressData.status === 'failed' ? 'Failed' : 'Processing'}
+                </Badge>
+              </div>
+
+              <ProgressBar value={progressData.progress_pct} />
+
+              <div className="flex items-center justify-between text-sm">
+                {progressData.status === 'completed' || progressData.pending === 0 ? (
+                  <div className="flex items-center gap-2 text-green-400">
+                    <CheckCircle size={16} />
+                    <span>All {progressData.queued} resume(s) processed</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-coral">
+                    <Loader size={16} className="animate-spin" />
+                    <span>Processing {progressData.processed + 1}/{progressData.queued}</span>
+                  </div>
+                )}
+                <span className="text-muted">{progressData.progress_pct}%</span>
+              </div>
+
+              {/* Processed / Failed breakdown */}
+              {(progressData.processed > 0 || progressData.failed > 0) && (
+                <div className="flex gap-4 text-xs">
+                  <span className="text-green-400">{progressData.processed} processed</span>
+                  {progressData.failed > 0 && (
+                    <span className="text-red-400">{progressData.failed} failed</span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 pt-3 border-t border-dark-600">
+              {progressData.status === 'completed' || progressData.pending === 0 ? (
+                <>
+                  <Button
+                    variant="secondary"
+                    className="flex-1 justify-center"
+                    onClick={closeProgress}
+                  >
+                    Close
+                  </Button>
+                  <Button
+                    className="flex-1 justify-center"
+                    onClick={() => {
+                      closeProgress();
+                      navigate(`/batches/${progressData.batch_id}/results`);
+                    }}
+                  >
+                    View Results →
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="secondary"
+                  className="w-full justify-center"
+                  onClick={closeProgress}
+                >
+                  Close (processing continues in background)
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Download,
   ChevronDown,
   ChevronUp,
   User,
@@ -9,30 +8,27 @@ import {
   Award,
   AlertTriangle,
   Filter,
+  ArrowLeft,
 } from 'lucide-react';
 import { Card, Badge, Button, ScoreGauge, ProgressBar, Skeleton } from '../components/UI';
-import BatchIdDisplay from '../components/BatchIdDisplay';
-import { getBatchResults, getBatchStatus, getBatchExport } from '../services/api';
+import { getCandidatesByJd } from '../services/api';
 import toast from 'react-hot-toast';
 
-export default function BatchResults() {
-  const { batchId } = useParams();
+export default function JDResults() {
+  const { jdId } = useParams();
+  const navigate = useNavigate();
   const [results, setResults] = useState([]);
-  const [batchInfo, setBatchInfo] = useState(null);
+  const [jdTitle, setJdTitle] = useState('');
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [filter, setFilter] = useState('all'); // all | Select | Review | Reject
-  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [resultsRes, statusRes] = await Promise.all([
-          getBatchResults(batchId),
-          getBatchStatus(batchId),
-        ]);
-        setResults(resultsRes.data?.candidates || []);
-        setBatchInfo(statusRes.data);
+        const res = await getCandidatesByJd(jdId);
+        setResults(res.data?.candidates || []);
+        setJdTitle(res.data?.jd_title || '');
       } catch {
         toast.error('Failed to load results');
       } finally {
@@ -40,30 +36,7 @@ export default function BatchResults() {
       }
     }
     fetchData();
-  }, [batchId]);
-
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      const res = await getBatchExport(batchId);
-      const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const disposition = res.headers['content-disposition'];
-      const filename = disposition?.match(/filename="(.+)"/)?.[1] || `batch_${batchId.slice(0, 8)}_export.xlsx`;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-      toast.success('Export downloaded successfully');
-    } catch {
-      toast.error('Export failed');
-    } finally {
-      setExporting(false);
-    }
-  };
+  }, [jdId]);
 
   // Map backend recommendations to display categories
   const getCategory = (rec) => {
@@ -103,14 +76,19 @@ export default function BatchResults() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
+          <button
+            onClick={() => navigate('/screened')}
+            className="flex items-center gap-1 text-muted hover:text-white text-sm mb-2 transition-colors"
+          >
+            <ArrowLeft size={14} /> Back to Screened Resumes
+          </button>
           <h1 className="text-3xl font-bold text-white">Screening Results</h1>
-          <div className="mt-2">
-            <BatchIdDisplay batchId={batchId} />
-          </div>
+          {jdTitle && (
+            <p className="text-muted mt-1 text-sm">
+              Job Description: <span className="text-white font-medium">{jdTitle}</span>
+            </p>
+          )}
         </div>
-        <Button onClick={handleExport} disabled={exporting} variant="secondary">
-          <Download size={16} /> {exporting ? 'Exporting...' : 'Export Excel'}
-        </Button>
       </div>
 
       {/* Summary Stats */}
@@ -169,14 +147,14 @@ export default function BatchResults() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-semibold text-white truncate">
-                    {candidate.personal?.name || 'Unknown'}
+                    {candidate.personal?.name || candidate.candidate_name || 'Unknown'}
                   </p>
                   <Badge variant={getRecommendationVariant(candidate.recommendation)}>
                     {candidate.recommendation}
                   </Badge>
                 </div>
                 <p className="text-xs text-muted truncate">
-                  {candidate.personal?.email} • {candidate.experience?.total_years || 0} yrs exp • {candidate.domain_classification}
+                  {candidate.personal?.email || candidate.candidate_email || ''} • {candidate.experience?.total_years || 0} yrs exp • {candidate.domain_classification || ''}
                 </p>
               </div>
 

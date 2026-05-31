@@ -31,19 +31,16 @@ class ExperienceInfo(BaseModel):
 
 
 class SkillsMatched(BaseModel):
-    mandatory: dict[str, bool] = Field(default_factory=dict)
     primary: dict[str, bool] = Field(default_factory=dict)
-    secondary: dict[str, object] = Field(default_factory=dict)
-    good_to_have: dict[str, bool] = Field(default_factory=dict)
+    secondary: dict[str, bool] = Field(default_factory=dict)
 
 
 class Scoring(BaseModel):
     match_score: float = 0.0
-    mandatory_score: float = 0.0
     primary_score: float = 0.0
+    secondary_score: float = 0.0
     experience_score: float = 0.0
     certification_score: float = 0.0
-    secondary_score: float = 0.0
     risk_penalty: float = 0.0
 
 

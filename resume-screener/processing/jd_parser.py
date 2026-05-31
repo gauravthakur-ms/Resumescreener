@@ -11,14 +11,12 @@ Extract the following:
 1. Job Title
 2. Domain (e.g., Cybersecurity, Banking, Telecom, Healthcare, IT, Data Science, DevOps, etc.)
 3. Minimum experience required (in years, as a number)
-4. Mandatory Skills — skills explicitly marked as required/must-have
-5. Primary Skills — core skills strongly emphasized
-6. Secondary Skills — skills mentioned but not critical
-7. Good-to-Have Skills — nice-to-have/preferred skills
-8. Preferred Certifications — any certifications mentioned
+4. Primary Skills — core skills that are required or strongly emphasized
+5. Secondary Skills — skills that are useful, preferred, or nice-to-have
+6. Preferred Certifications — any certifications mentioned
 
 Rules:
-- Classify skills carefully: mandatory = absolute requirement, primary = strongly preferred, secondary = useful, good_to_have = bonus
+- Classify skills carefully: primary = required or strongly preferred, secondary = useful or nice-to-have
 - If minimum experience is not explicitly stated, estimate from seniority level (Junior=1, Mid=3, Senior=5, Lead=8)
 - Return only valid JSON. No explanation, no markdown, no code fences.
 - If a field cannot be determined, use empty list [] or 0.
@@ -29,10 +27,8 @@ Output Format:
   "domain": "...",
   "min_experience_years": 3,
   "skills": {
-    "mandatory": ["Skill1", "Skill2"],
-    "primary": ["Skill3", "Skill4"],
-    "secondary": ["Skill5"],
-    "good_to_have": ["Skill6"]
+    "primary": ["Skill1", "Skill2"],
+    "secondary": ["Skill3", "Skill4"]
   },
   "certifications_preferred": ["Cert1", "Cert2"]
 }"""
@@ -58,6 +54,7 @@ def parse_jd(jd_text: str, trace_id: str = "") -> dict | None:
 
     # Ensure required structure
     if "skills" not in parsed:
-        parsed["skills"] = {"mandatory": [], "primary": [], "secondary": [], "good_to_have": []}
+        parsed["skills"] = {"primary": [], "secondary": []}
 
     return parsed
+
