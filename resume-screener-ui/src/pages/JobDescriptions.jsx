@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Plus, FileText, Calendar, Briefcase, Trash2, Pencil, Save, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, FileText, Calendar, Briefcase, Trash2, Pencil, Save, X, Type, List, BarChart3 } from 'lucide-react';
 import { Card, Button, Badge, Modal, EmptyState, Skeleton } from '../components/UI';
-import { getJDs, getJDById, uploadJD, uploadJDText, deleteJD, updateJD } from '../services/api';
+import { getJDs, getJDById, uploadJD, uploadJDText, deleteJD, updateJD, updateJDText } from '../services/api';
 import toast from 'react-hot-toast';
 
 export default function JobDescriptions() {
+  const navigate = useNavigate();
   const [jds, setJds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -18,6 +20,8 @@ export default function JobDescriptions() {
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState(null);
+  const [editMode, setEditMode] = useState('form'); // 'form' | 'text'
+  const [textContent, setTextContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [projectId, setProjectId] = useState('');
@@ -79,7 +83,49 @@ export default function JobDescriptions() {
       scoring_weights: { ...(selectedJd.scoring_weights || {}) },
       thresholds: { ...(selectedJd.thresholds || {}) },
     });
+    // Prepare text content for text mode
+    const jdText = selectedJd.raw_text || generateTextFromJd(selectedJd);
+    setTextContent(jdText);
+    setEditMode('text');
     setEditing(true);
+  };
+
+  const generateTextFromJd = (jd) => {
+    const lines = [];
+    lines.push(`Title: ${jd.title || 'Untitled'}`);
+    lines.push(`Domain: ${jd.domain || 'General'}`);
+    lines.push(`Minimum Experience: ${jd.min_experience_years || 0}+ years`);
+    lines.push('');
+    if (jd.skills?.primary?.length) {
+      lines.push(`Primary Skills: ${jd.skills.primary.join(', ')}`);
+    }
+    if (jd.skills?.secondary?.length) {
+      lines.push(`Secondary Skills: ${jd.skills.secondary.join(', ')}`);
+    }
+    if (jd.certifications_preferred?.length) {
+      lines.push('');
+      lines.push(`Certifications Preferred: ${jd.certifications_preferred.join(', ')}`);
+    }
+    return lines.join('\n');
+  };
+
+  const handleSaveText = async () => {
+    if (!textContent.trim()) {
+      toast.error('Text content cannot be empty');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await updateJDText(selectedJd.id, textContent);
+      setSelectedJd(res.data);
+      setEditing(false);
+      toast.success('Job description updated (re-parsed from text)');
+      fetchJDs();
+    } catch {
+      toast.error('Failed to update job description');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSave = async () => {
@@ -200,65 +246,78 @@ export default function JobDescriptions() {
           {jds.map((jd) => (
             <Card
               key={jd.id}
-              className="cursor-pointer hover:border-coral/40 transition-colors !p-4"
+              className="cursor-pointer hover:border-coral/40 transition-colors !p-4 flex flex-col"
               onClick={() => openDetail(jd)}
             >
-              {/* Line 1 — Icon + Job ID + Delete */}
-              <div className="flex items-center gap-2.5 mb-2">
-                <div className="w-9 h-9 rounded-lg bg-coral/10 flex items-center justify-center shrink-0">
-                  <Briefcase size={16} className="text-coral" />
+              {/* Card Content */}
+              <div className="flex-1">
+                {/* Line 1 — Icon + Job ID + Delete */}
+                <div className="flex items-center gap-2.5 mb-2">
+                  <div className="w-9 h-9 rounded-lg bg-coral/10 flex items-center justify-center shrink-0">
+                    <Briefcase size={16} className="text-coral" />
+                  </div>
+                  <span className="text-[13px] font-semibold font-mono text-coral flex-1 min-w-0 truncate">
+                    {jd.project_id || '—'}
+                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Badge variant="default">{jd.domain || 'General'}</Badge>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(jd); }}
+                      className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
-                <span className="text-[13px] font-semibold font-mono text-coral flex-1 min-w-0 truncate">
-                  {jd.project_id || '—'}
-                </span>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <Badge variant="default">{jd.domain || 'General'}</Badge>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setDeleteTarget(jd); }}
-                    className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                    title="Delete"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+
+                {/* Line 2 — Job Role */}
+                <h3 className="text-[15px] font-bold text-white truncate mb-1.5">
+                  {jd.title}
+                </h3>
+
+                {/* Line 3 — Experience Required */}
+                <p className="text-[13px] text-white truncate mb-1.5">
+                  {jd.min_experience_years || 0}+ yrs exp
+                </p>
+
+                {/* Line 4 — Date Posted */}
+                <div className="flex items-center gap-1 text-xs text-[#888] mb-2.5">
+                  <Calendar size={12} />
+                  {formatDate(jd.uploaded_at)}
+                </div>
+
+                {/* Line 5 — Skills Pills */}
+                <div className="flex flex-wrap gap-1.5">
+                  {(jd.skills?.primary || []).slice(0, 8).map((skill) => (
+                    <span
+                      key={skill}
+                      className="px-2 py-0.5 text-xs bg-coral/10 text-coral rounded-md"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                  {(jd.skills?.primary?.length || 0) > 8 && (
+                    <span className="relative group">
+                      <span className="px-2 py-0.5 text-xs bg-dark-700 text-muted rounded-md cursor-default">
+                        +{jd.skills.primary.length - 8}
+                      </span>
+                      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-dark-700 border border-coral/40 rounded-lg shadow-xl text-xs text-white whitespace-normal max-w-[220px] opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-50">
+                        {jd.skills.primary.slice(8).join(', ')}
+                      </span>
+                    </span>
+                  )}
                 </div>
               </div>
 
-              {/* Line 2 — Job Role */}
-              <h3 className="text-[15px] font-bold text-white truncate mb-1.5">
-                {jd.title}
-              </h3>
-
-              {/* Line 3 — Experience Required */}
-              <p className="text-[13px] text-white truncate mb-1.5">
-                {jd.min_experience_years || 0}+ yrs exp
-              </p>
-
-              {/* Line 4 — Date Posted */}
-              <div className="flex items-center gap-1 text-xs text-[#888] mb-2.5">
-                <Calendar size={12} />
-                {formatDate(jd.uploaded_at)}
-              </div>
-
-              {/* Line 5 — Skills Pills */}
-              <div className="flex flex-wrap gap-1.5">
-                {(jd.skills?.primary || []).slice(0, 8).map((skill) => (
-                  <span
-                    key={skill}
-                    className="px-2 py-0.5 text-xs bg-coral/10 text-coral rounded-md"
-                  >
-                    {skill}
-                  </span>
-                ))}
-                {(jd.skills?.primary?.length || 0) > 8 && (
-                  <span className="relative group">
-                    <span className="px-2 py-0.5 text-xs bg-dark-700 text-muted rounded-md cursor-default">
-                      +{jd.skills.primary.length - 8}
-                    </span>
-                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-dark-700 border border-coral/40 rounded-lg shadow-xl text-xs text-white whitespace-normal max-w-[220px] opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-50">
-                      {jd.skills.primary.slice(8).join(', ')}
-                    </span>
-                  </span>
-                )}
+              {/* Results Button — always anchored to bottom */}
+              <div className="mt-3 pt-2.5 border-t border-dark-600 flex justify-end">
+                <button
+                  onClick={(e) => { e.stopPropagation(); navigate(`/screened/${jd.id}/results`); }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-coral border border-coral/30 hover:bg-coral/10 hover:border-coral/50 rounded-md transition-all duration-200"
+                >
+                  <BarChart3 size={13} /> View Results
+                </button>
               </div>
             </Card>
           ))}
@@ -479,6 +538,28 @@ export default function JobDescriptions() {
 
         {selectedJd && editing && editData && (
           <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+            {/* Mode Toggle */}
+            <div className="flex bg-dark-700 rounded-lg p-1">
+              <button
+                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                  editMode === 'text' ? 'bg-coral text-white' : 'text-muted hover:text-white'
+                }`}
+                onClick={() => setEditMode('text')}
+              >
+                <Type size={14} /> Text Mode
+              </button>
+              <button
+                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                  editMode === 'form' ? 'bg-coral text-white' : 'text-muted hover:text-white'
+                }`}
+                onClick={() => setEditMode('form')}
+              >
+                <List size={14} /> Form Mode
+              </button>
+            </div>
+
+            {editMode === 'form' ? (
+              <>
             <div>
               <label className="text-xs text-muted block mb-1">Project ID <span className="text-coral">*</span></label>
               <input
@@ -612,6 +693,32 @@ export default function JobDescriptions() {
                 <Save size={14} /> {saving ? 'Saving...' : 'Save Changes'}
               </Button>
             </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <p className="text-xs text-muted mb-2">
+                    Edit the full job description text below. On save, it will be re-parsed by AI to extract structured fields.
+                  </p>
+                  <textarea
+                    rows={18}
+                    value={textContent}
+                    onChange={(e) => setTextContent(e.target.value)}
+                    className="w-full px-4 py-3 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-coral resize-none leading-relaxed"
+                    placeholder="Paste or type the full job description here..."
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-3 border-t border-dark-600">
+                  <Button variant="secondary" className="flex-1" onClick={() => setEditing(false)}>
+                    <X size={14} /> Cancel
+                  </Button>
+                  <Button className="flex-1" onClick={handleSaveText} disabled={saving || !textContent.trim()}>
+                    <Save size={14} /> {saving ? 'Saving...' : 'Save'}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </Modal>

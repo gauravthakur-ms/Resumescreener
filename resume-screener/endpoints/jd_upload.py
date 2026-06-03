@@ -248,7 +248,7 @@ def handle_update_jd(req: func.HttpRequest) -> func.HttpResponse:
 
     # Update allowed fields
     updatable = ["title", "project_id", "domain", "min_experience_years", "skills",
-                 "certifications_preferred", "scoring_weights", "thresholds"]
+                 "certifications_preferred", "scoring_weights", "thresholds", "raw_text"]
     for field in updatable:
         if field in body:
             existing[field] = body[field]
@@ -265,3 +265,79 @@ def handle_update_jd(req: func.HttpRequest) -> func.HttpResponse:
         status_code=200,
         mimetype="application/json",
     )
+
+
+def handle_update_jd_text(req: func.HttpRequest) -> func.HttpResponse:
+    """PUT /api/jd/{jd_id}/text — Update a JD by re-parsing raw text via LLM."""
+    jd_id = req.route_params.get("jd_id")
+    if not jd_id:
+        return func.HttpResponse(
+            json.dumps({"error": "jd_id is required"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    existing = get_jd(jd_id)
+    if not existing:
+        return func.HttpResponse(
+            json.dumps({"error": f"JD not found: {jd_id}"}),
+            status_code=404,
+            mimetype="application/json",
+        )
+
+    try:
+        body = req.get_json()
+    except ValueError:
+        return func.HttpResponse(
+            json.dumps({"error": "Invalid JSON body"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    raw_text = body.get("raw_text", "").strip()
+    if not raw_text:
+        return func.HttpResponse(
+            json.dumps({"error": "raw_text is required"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    try:
+        trace_id = f"jd_reparse_{uuid.uuid4().hex[:8]}"
+        parsed = parse_jd(raw_text, trace_id=trace_id)
+
+        if not parsed:
+            return func.HttpResponse(
+                json.dumps({"error": "Failed to parse JD text"}),
+                status_code=500,
+                mimetype="application/json",
+            )
+
+        # Update fields from parsed output
+        existing["title"] = parsed.get("title", existing.get("title", "Untitled Role"))
+        existing["domain"] = parsed.get("domain", existing.get("domain", "General"))
+        existing["min_experience_years"] = parsed.get("min_experience_years", existing.get("min_experience_years", 0))
+        existing["skills"] = parsed.get("skills", existing.get("skills", {}))
+        existing["certifications_preferred"] = parsed.get("certifications_preferred", existing.get("certifications_preferred", []))
+        existing["raw_text"] = raw_text[:5000]
+
+        upsert_jd(existing)
+        logger.info(f"Updated JD via text reparse: {jd_id}")
+
+        # Remove Cosmos metadata before returning
+        for key in ["_rid", "_self", "_etag", "_attachments", "_ts"]:
+            existing.pop(key, None)
+
+        return func.HttpResponse(
+            json.dumps(existing),
+            status_code=200,
+            mimetype="application/json",
+        )
+
+    except Exception as e:
+        logger.error(f"JD text reparse failed: {e}")
+        return func.HttpResponse(
+            json.dumps({"error": f"Re-parse failed: {str(e)}"}),
+            status_code=500,
+            mimetype="application/json",
+        )

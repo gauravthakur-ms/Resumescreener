@@ -7,18 +7,24 @@ import {
   UserCheck,
   PanelLeftClose,
   PanelLeftOpen,
+  Shield,
+  User,
 } from 'lucide-react';
 
 const navItems = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/', icon: LayoutDashboard, label: 'Dashboard', adminOnly: true },
   { path: '/jobs', icon: FileText, label: 'Job Descriptions' },
   { path: '/upload', icon: Upload, label: 'Upload Resumes' },
   { path: '/screened', icon: UserCheck, label: 'Screened Resumes' },
-  { path: '/batches', icon: Layers, label: 'Batches' },
+  { path: '/batches', icon: Layers, label: 'Batches', adminOnly: true },
 ];
 
-export default function Sidebar({ collapsed, setCollapsed }) {
+export default function Sidebar({ collapsed, setCollapsed, role, onRoleChange }) {
   const location = useLocation();
+
+  const visibleItems = navItems.filter(
+    (item) => !item.adminOnly || role === 'admin'
+  );
 
   return (
     <aside
@@ -28,7 +34,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
     >
       {/* Navigation */}
       <nav className="flex-1 py-5 px-2.5 space-y-1 overflow-hidden">
-        {navItems.map(({ path, icon: Icon, label }) => {
+        {visibleItems.map(({ path, icon: Icon, label }) => {
           const isActive =
             path === '/'
               ? location.pathname === '/'
@@ -63,6 +69,30 @@ export default function Sidebar({ collapsed, setCollapsed }) {
           );
         })}
       </nav>
+
+      {/* Role Toggle */}
+      <div className="px-3 pb-2">
+        <button
+          onClick={() => onRoleChange(role === 'admin' ? 'user' : 'admin')}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] border ${
+            role === 'admin'
+              ? 'text-coral bg-coral/5 border-coral/20 hover:bg-coral/10'
+              : 'text-blue-400 bg-blue-500/5 border-blue-500/20 hover:bg-blue-500/10'
+          } ${collapsed ? 'justify-center' : ''}`}
+          title={collapsed ? `Role: ${role === 'admin' ? 'Admin' : 'User'}` : undefined}
+        >
+          {role === 'admin' ? (
+            <Shield size={14} className="shrink-0" />
+          ) : (
+            <User size={14} className="shrink-0" />
+          )}
+          {!collapsed && (
+            <span className="transition-opacity duration-300">
+              {role === 'admin' ? 'Admin' : 'User'}
+            </span>
+          )}
+        </button>
+      </div>
 
       {/* Collapse toggle — clean pill button */}
       <div className="px-3 pb-4">

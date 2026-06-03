@@ -53,9 +53,14 @@ def handle_batch_results(req: func.HttpRequest) -> func.HttpResponse:
         c.pop("_attachments", None)
         c.pop("_ts", None)
 
+    # Look up JD for certifications info
+    jd_id = batch.get("jd_id")
+    jd = get_jd(jd_id) if jd_id else None
+
     response = {
         "batch_id": batch_id,
-        "jd_id": batch.get("jd_id"),
+        "jd_id": jd_id,
+        "certifications_preferred": jd.get("certifications_preferred", []) if jd else [],
         "total_results": len(candidates),
         "sort_by": sort_by,
         "candidates": candidates,

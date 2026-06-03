@@ -13,7 +13,11 @@ export default function Header() {
 
       {/* Center — App Title */}
       <div className="text-center">
-        <h1 className="text-[17px] font-bold text-white leading-tight tracking-tight">Smart Resume Screener</h1>
+        <h1 className="text-[20px] font-extrabold leading-tight tracking-tight">
+          <span className="text-coral">Smart</span>
+          <span className="text-white"> Resume </span>
+          <span className="text-coral">Screener</span>
+        </h1>
       </div>
 
       {/* Right — User Avatar */}

@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, FileCheck, AlertCircle, X, CheckCircle, Clock, Copy, Loader } from 'lucide-react';
+import { Upload, FileCheck, AlertCircle, X, CheckCircle, Clock, Copy, Loader, FileText, Plus } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { Card, Button, Badge, Modal, ProgressBar } from '../components/UI';
 import BatchIdDisplay from '../components/BatchIdDisplay';
-import { getJDs, uploadResumes, getBatchStatus } from '../services/api';
+import { getJDs, uploadResumes, getBatchStatus, uploadJD, uploadJDText } from '../services/api';
 import toast from 'react-hot-toast';
 
 export default function ResumeUpload() {
@@ -20,11 +20,70 @@ export default function ResumeUpload() {
   const [progressData, setProgressData] = useState(null);
   const pollingRef = useRef(null);
 
+  // Upload JD modal state
+  const [showJdModal, setShowJdModal] = useState(false);
+  const [jdUploadMode, setJdUploadMode] = useState('file');
+  const [jdFile, setJdFile] = useState(null);
+  const [jdText, setJdText] = useState('');
+  const [jdTitle, setJdTitle] = useState('');
+  const [jdProjectId, setJdProjectId] = useState('');
+  const [jdProjectIdError, setJdProjectIdError] = useState('');
+  const [jdUploading, setJdUploading] = useState(false);
+
   useEffect(() => {
     getJDs()
       .then((res) => setJds(Array.isArray(res.data) ? res.data : []))
       .catch(() => toast.error('Failed to load job descriptions'));
   }, []);
+
+  const handleJdSelect = (e) => {
+    const value = e.target.value;
+    if (value === '__upload_new__') {
+      setShowJdModal(true);
+    } else {
+      setSelectedJd(value);
+    }
+  };
+
+  const handleJdUpload = async () => {
+    if (!jdProjectId.trim()) {
+      setJdProjectIdError('Project ID is required');
+      return;
+    }
+    setJdUploading(true);
+    try {
+      let res;
+      if (jdUploadMode === 'file' && jdFile) {
+        const formData = new FormData();
+        formData.append('jd_file', jdFile);
+        formData.append('project_id', jdProjectId.trim());
+        res = await uploadJD(formData);
+      } else if (jdUploadMode === 'text' && jdText.trim()) {
+        res = await uploadJDText(jdText, jdTitle, jdProjectId.trim());
+      } else {
+        toast.error('Please provide a file or text');
+        setJdUploading(false);
+        return;
+      }
+      toast.success('Job description uploaded!');
+      const newJdId = res.data?.jd_id;
+      // Refresh JD list and auto-select the new one
+      const jdRes = await getJDs();
+      setJds(Array.isArray(jdRes.data) ? jdRes.data : []);
+      if (newJdId) setSelectedJd(newJdId);
+      // Reset modal state
+      setShowJdModal(false);
+      setJdFile(null);
+      setJdText('');
+      setJdTitle('');
+      setJdProjectId('');
+      setJdProjectIdError('');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'JD upload failed');
+    } finally {
+      setJdUploading(false);
+    }
+  };
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -150,7 +209,7 @@ export default function ResumeUpload() {
             </label>
             <select
               value={selectedJd}
-              onChange={(e) => setSelectedJd(e.target.value)}
+              onChange={handleJdSelect}
               className="w-full px-4 py-2.5 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral appearance-none"
             >
               <option value="">Choose a JD...</option>
@@ -159,6 +218,7 @@ export default function ResumeUpload() {
                   {jd.title} ({jd.domain})
                 </option>
               ))}
+              <option value="__upload_new__">+ Upload New JD</option>
             </select>
           </Card>
 
@@ -405,6 +465,90 @@ export default function ResumeUpload() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Upload JD Modal */}
+      <Modal isOpen={showJdModal} onClose={() => { setShowJdModal(false); setJdProjectIdError(''); }} title="Upload Job Description">
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs text-muted block mb-1">
+              Project ID <span className="text-coral">*</span>
+            </label>
+            <input
+              type="text"
+              placeholder="Enter Project ID (e.g. PROJ-2024-001)"
+              value={jdProjectId}
+              onChange={(e) => { setJdProjectId(e.target.value); if (e.target.value.trim()) setJdProjectIdError(''); }}
+              className={`w-full px-3.5 py-2.5 bg-[#1a1a1a] border rounded-lg text-[#f5f5f5] text-sm placeholder:text-muted focus:outline-none focus:border-coral focus:shadow-[0_0_0_2px_rgba(255,69,68,0.15)] ${
+                jdProjectIdError ? 'border-coral bg-[rgba(255,69,68,0.05)]' : 'border-[#333]'
+              }`}
+            />
+            {jdProjectIdError && <p className="text-coral text-xs mt-1">⚠ {jdProjectIdError}</p>}
+          </div>
+
+          <div className="flex bg-dark-700 rounded-lg p-1">
+            <button
+              className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
+                jdUploadMode === 'file' ? 'bg-coral text-white' : 'text-muted'
+              }`}
+              onClick={() => setJdUploadMode('file')}
+            >
+              Upload File
+            </button>
+            <button
+              className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
+                jdUploadMode === 'text' ? 'bg-coral text-white' : 'text-muted'
+              }`}
+              onClick={() => setJdUploadMode('text')}
+            >
+              Paste Text
+            </button>
+          </div>
+
+          {jdUploadMode === 'file' ? (
+            <div className="border-2 border-dashed border-dark-600 rounded-xl p-8 text-center hover:border-coral/40 transition-colors">
+              <input
+                type="file"
+                accept=".pdf,.docx"
+                onChange={(e) => setJdFile(e.target.files[0])}
+                className="hidden"
+                id="jd-file-upload"
+              />
+              <label htmlFor="jd-file-upload" className="cursor-pointer">
+                <FileText size={32} className="mx-auto text-muted mb-2" />
+                <p className="text-sm text-muted">
+                  {jdFile ? jdFile.name : 'Click to select PDF or DOCX'}
+                </p>
+              </label>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <input
+                type="text"
+                placeholder="Job Title (optional)"
+                value={jdTitle}
+                onChange={(e) => setJdTitle(e.target.value)}
+                className="w-full px-4 py-2.5 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm placeholder:text-muted focus:outline-none focus:border-coral"
+              />
+              <textarea
+                rows={8}
+                placeholder="Paste job description text here..."
+                value={jdText}
+                onChange={(e) => setJdText(e.target.value)}
+                className="w-full px-4 py-3 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm placeholder:text-muted focus:outline-none focus:border-coral resize-none"
+              />
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <Button variant="secondary" className="flex-1" onClick={() => { setShowJdModal(false); setJdProjectIdError(''); }}>
+              Cancel
+            </Button>
+            <Button className="flex-1" onClick={handleJdUpload} disabled={jdUploading || !jdProjectId.trim()}>
+              {jdUploading ? 'Uploading...' : 'Upload'}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

@@ -9,9 +9,12 @@ import {
   AlertTriangle,
   Filter,
   ArrowLeft,
+  ArrowUpDown,
+  Calendar,
+  Download,
 } from 'lucide-react';
 import { Card, Badge, Button, ScoreGauge, ProgressBar, Skeleton } from '../components/UI';
-import { getCandidatesByJd } from '../services/api';
+import { getCandidatesByJd, getJdExport } from '../services/api';
 import toast from 'react-hot-toast';
 
 export default function JDResults() {
@@ -19,9 +22,14 @@ export default function JDResults() {
   const navigate = useNavigate();
   const [results, setResults] = useState([]);
   const [jdTitle, setJdTitle] = useState('');
+  const [certsPreferred, setCertsPreferred] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [filter, setFilter] = useState('all'); // all | Select | Review | Reject
+  const [sortOrder, setSortOrder] = useState('desc'); // desc = High to Low, asc = Low to High
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -29,6 +37,7 @@ export default function JDResults() {
         const res = await getCandidatesByJd(jdId);
         setResults(res.data?.candidates || []);
         setJdTitle(res.data?.jd_title || '');
+        setCertsPreferred(res.data?.certifications_preferred || []);
       } catch {
         toast.error('Failed to load results');
       } finally {
@@ -45,14 +54,69 @@ export default function JDResults() {
     return 'Reject';
   };
 
-  const filtered = filter === 'all'
-    ? results
-    : results.filter((c) => getCategory(c.recommendation) === filter);
+  const filtered = (() => {
+    let list = filter === 'all'
+      ? [...results]
+      : results.filter((c) => getCategory(c.recommendation) === filter);
+
+    // Date filter
+    if (dateFrom) {
+      const from = new Date(dateFrom);
+      list = list.filter((c) => {
+        const d = c.screened_at || c.processed_at || c._ts;
+        if (!d) return true;
+        const candidate_date = typeof d === 'number' ? new Date(d * 1000) : new Date(d);
+        return candidate_date >= from;
+      });
+    }
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+      list = list.filter((c) => {
+        const d = c.screened_at || c.processed_at || c._ts;
+        if (!d) return true;
+        const candidate_date = typeof d === 'number' ? new Date(d * 1000) : new Date(d);
+        return candidate_date <= to;
+      });
+    }
+
+    // Sort by match score
+    list.sort((a, b) => {
+      const scoreA = a.scoring?.match_score || 0;
+      const scoreB = b.scoring?.match_score || 0;
+      return sortOrder === 'desc' ? scoreB - scoreA : scoreA - scoreB;
+    });
+
+    return list;
+  })();
 
   const getRecommendationVariant = (rec) => {
     const cat = getCategory(rec);
     const map = { Select: 'select', Review: 'review', Reject: 'reject' };
     return map[cat] || 'default';
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await getJdExport(jdId, filtered);
+      const disposition = res.headers['content-disposition'] || '';
+      const match = disposition.match(/filename="?(.+?)"?$/);
+      const filename = match ? match[1] : `jd_export_${jdId}.xlsx`;
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Export downloaded');
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (loading) {
@@ -89,6 +153,9 @@ export default function JDResults() {
             </p>
           )}
         </div>
+        <Button onClick={handleExport} disabled={exporting || results.length === 0} variant="secondary">
+          <Download size={16} /> {exporting ? 'Exporting...' : 'Export Excel'}
+        </Button>
       </div>
 
       {/* Summary Stats */}
@@ -127,6 +194,50 @@ export default function JDResults() {
             {f === 'all' ? 'All' : f} {f !== 'all' && `(${f === 'Select' ? selectCount : f === 'Review' ? reviewCount : rejectCount})`}
           </button>
         ))}
+      </div>
+
+      {/* Sort & Date Filters */}
+      <div className="flex flex-wrap items-center gap-4">
+        {/* Sort by Score */}
+        <div className="flex items-center gap-2">
+          <ArrowUpDown size={14} className="text-white/70" />
+          <span className="text-xs text-white/80 font-medium">Score:</span>
+          <select
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value)}
+            className="px-2.5 py-1.5 text-xs bg-dark-700 border border-dark-600 rounded-lg text-white focus:outline-none focus:border-coral"
+          >
+            <option value="desc">High to Low</option>
+            <option value="asc">Low to High</option>
+          </select>
+        </div>
+
+        {/* Date Range */}
+        <div className="flex items-center gap-2">
+          <Calendar size={14} className="text-white/70" />
+          <span className="text-xs text-white/80 font-medium">From:</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="px-2.5 py-1.5 text-xs bg-dark-700 border border-dark-600 rounded-lg text-white focus:outline-none focus:border-coral"
+          />
+          <span className="text-xs text-white/80 font-medium">To:</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="px-2.5 py-1.5 text-xs bg-dark-700 border border-dark-600 rounded-lg text-white focus:outline-none focus:border-coral"
+          />
+          {(dateFrom || dateTo) && (
+            <button
+              onClick={() => { setDateFrom(''); setDateTo(''); }}
+              className="px-2 py-1.5 text-xs bg-dark-700 text-muted hover:text-white rounded-lg transition-colors"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Results List */}
@@ -210,11 +321,10 @@ export default function JDResults() {
                   <p className="text-xs text-muted mb-2 font-medium">Score Breakdown</p>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     {[
-                      ['Mandatory Skills', candidate.scoring?.mandatory_score],
                       ['Primary Skills', candidate.scoring?.primary_score],
+                      ['Secondary Skills', candidate.scoring?.secondary_score],
                       ['Experience', candidate.scoring?.experience_score],
                       ['Certifications', candidate.scoring?.certification_score],
-                      ['Secondary', candidate.scoring?.secondary_score],
                       ['Risk Penalty', candidate.scoring?.risk_penalty],
                     ].map(([label, val]) => (
                       <div key={label} className="bg-dark-700 rounded-lg p-2.5">
@@ -228,39 +338,90 @@ export default function JDResults() {
                   </div>
                 </div>
 
-                {/* Skills */}
-                <div>
-                  <p className="text-xs text-muted mb-2 font-medium">Skills Match</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {Object.entries(candidate.skills_matched?.mandatory || {}).map(
-                      ([skill, matched]) => (
-                        <span
-                          key={skill}
-                          className={`px-2 py-0.5 text-xs rounded-md ${
-                            matched
-                              ? 'bg-green-500/10 text-green-400'
-                              : 'bg-red-500/10 text-red-400'
-                          }`}
-                        >
-                          {skill} {matched ? '✓' : '✗'}
-                        </span>
-                      )
-                    )}
-                    {Object.entries(candidate.skills_matched?.primary || {}).map(
-                      ([skill, matched]) => (
-                        <span
-                          key={skill}
-                          className={`px-2 py-0.5 text-xs rounded-md ${
-                            matched
-                              ? 'bg-blue-500/10 text-blue-400'
-                              : 'bg-orange-500/10 text-orange-400'
-                          }`}
-                        >
-                          {skill} {matched ? '✓' : '✗'}
-                        </span>
-                      )
-                    )}
-                  </div>
+                {/* Skills Match */}
+                <div className="space-y-3">
+                  <p className="text-xs text-muted font-medium">Skills Match</p>
+
+                  {/* Primary Skills */}
+                  {Object.keys(candidate.skills_matched?.primary || {}).length > 0 && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-muted font-semibold mb-1.5">Primary Skills</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {Object.entries(candidate.skills_matched.primary).map(
+                          ([skill, matched]) => (
+                            <span
+                              key={skill}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md font-medium ${
+                                matched
+                                  ? 'bg-coral/10 text-coral border border-coral/20'
+                                  : 'bg-red-500/5 text-red-400/60 border border-red-500/10 line-through decoration-red-400/40'
+                              }`}
+                            >
+                              <span className={`text-[10px] ${matched ? 'text-green-400' : 'text-red-400/60'}`}>
+                                {matched ? '✓' : '✕'}
+                              </span>
+                              {skill}
+                            </span>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Secondary Skills */}
+                  {Object.keys(candidate.skills_matched?.secondary || {}).length > 0 && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-muted font-semibold mb-1.5">Secondary Skills</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {Object.entries(candidate.skills_matched.secondary).map(
+                          ([skill, matched]) => (
+                            <span
+                              key={skill}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md font-medium ${
+                                matched
+                                  ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                                  : 'bg-blue-500/5 text-blue-400/50 border border-blue-500/10 line-through decoration-blue-400/40'
+                              }`}
+                            >
+                              <span className={`text-[10px] ${matched ? 'text-green-400' : 'text-red-400/60'}`}>
+                                {matched ? '✓' : '✕'}
+                              </span>
+                              {skill}
+                            </span>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Certifications */}
+                  {certsPreferred.length > 0 && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-muted font-semibold mb-1.5">Certifications</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {certsPreferred.map((cert) => {
+                          const matched = (candidate.certifications || []).some(
+                            (c) => c.toLowerCase() === cert.toLowerCase()
+                          );
+                          return (
+                            <span
+                              key={cert}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md font-medium ${
+                                matched
+                                  ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                                  : 'bg-purple-500/5 text-purple-400/50 border border-purple-500/10 line-through decoration-purple-400/40'
+                              }`}
+                            >
+                              <span className={`text-[10px] ${matched ? 'text-green-400' : 'text-red-400/60'}`}>
+                                {matched ? '✓' : '✕'}
+                              </span>
+                              {cert}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Risk Flags */}

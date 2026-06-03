@@ -14,6 +14,7 @@ export const getJDs = () => api.get('/jd');
 export const getJDById = (jdId) => api.get(`/jd/${jdId}`);
 export const deleteJD = (jdId) => api.delete(`/jd/${jdId}`);
 export const updateJD = (jdId, data) => api.put(`/jd/${jdId}`, data);
+export const updateJDText = (jdId, rawText) => api.put(`/jd/${jdId}/text`, { raw_text: rawText });
 export const uploadJD = (formData) =>
   api.post('/jd', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -38,6 +39,7 @@ export const getBatchExport = (batchId) => api.get(`/batch/${batchId}/export`, {
 // Screened Resumes / Candidates
 export const getCandidatesByJd = (jdId) => api.get(`/jd/${jdId}/candidates`);
 export const deleteCandidate = (candidateId, jdId) => api.delete(`/candidate/${candidateId}`, { params: { jd_id: jdId } });
+export const getJdExport = (jdId, candidates) => api.post(`/jd/${jdId}/export`, { candidates }, { responseType: 'blob' });
 
 // Health
 export const healthCheck = () => api.get('/health');
