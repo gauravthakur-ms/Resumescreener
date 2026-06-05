@@ -35,6 +35,10 @@ Extract these fields:
 
 3. Certifications: list all professional certifications found
 
+4. Technical Skills: list ALL skills the candidate possesses from this list: {skills_list}
+   - Include skills found ANYWHERE in the resume: skills section, summary, work experience, projects, certifications, education
+   - If the candidate lists a skill in their technical skills section, include it even if not mentioned in work experience
+
 4. Domain Classification: identify primary domain (Cybersecurity, Banking, Telecom, Healthcare, IT, Data Science, DevOps, Education, Manufacturing, Retail, etc.)
 
 5. Summary of Experience: 20-30 word summary from work experience (not from resume summary section)
@@ -46,7 +50,8 @@ Extract these fields:
    - Values: "High", "Medium", "Low"
 
 Rules:
-- Extract skills ONLY from work experience descriptions, not from skills/summary sections for experience counting
+- Extract skills_used in work experience ONLY from work experience descriptions for experience counting
+- Extract technical_skills from the ENTIRE resume (skills section, projects, work experience, summary, etc.)
 - If a field cannot be found, use "NDATA" (never null or empty string)
 - All dates must be in MMMYYYY format (e.g., Jan2023, Nov2021)
 - Duration should be calculated as float years (e.g., 2.5)
@@ -75,6 +80,7 @@ Output Format:
     ]
   }},
   "certifications": ["GREM", "OSCP"],
+  "technical_skills": ["Android", "Malware Analysis", "Python"],
   "domain_classification": "Cybersecurity",
   "confidence": {{
     "name_confidence": "High",

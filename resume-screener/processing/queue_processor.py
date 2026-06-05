@@ -53,6 +53,73 @@ Candidate Data:
 """
 
 
+def _build_skill_timeline(individual_raw: list[dict]) -> dict[str, dict]:
+    """Build a mapping of skill -> {period, project} from most recent usage.
+    
+    For each skill found in work experience, find the most recent project
+    where it was used and record the time period and organization name.
+    """
+    skill_map = {}  # skill_lower -> {period, project, end_sort_key}
+
+    for entry in individual_raw:
+        org = entry.get("organization", "Unknown")
+        start_end = entry.get("start_end", "NDATA")
+        skills_used = entry.get("skills_used", [])
+
+        if start_end == "NDATA" or not skills_used:
+            continue
+
+        # Parse end date for recency comparison
+        parts = start_end.split("-")
+        end_part = parts[1] if len(parts) == 2 else parts[0]
+
+        # Format period for display (e.g., "Jan2022 – Mar2025")
+        period = start_end.replace("-", " – ") if "-" in start_end else start_end
+
+        for skill in skills_used:
+            skill_lower = skill.lower()
+            existing = skill_map.get(skill_lower)
+            if existing is None:
+                skill_map[skill_lower] = {
+                    "period": period,
+                    "project": org,
+                    "end_sort": end_part,
+                }
+            else:
+                # Keep most recent (simple string compare works for MMMYYYY with month abbreviations)
+                # Use a safer numeric approach
+                if _date_key(end_part) > _date_key(existing["end_sort"]):
+                    skill_map[skill_lower] = {
+                        "period": period,
+                        "project": org,
+                        "end_sort": end_part,
+                    }
+
+    # Return clean output without sort key
+    return {
+        skill: {"period": info["period"], "project": info["project"]}
+        for skill, info in skill_map.items()
+    }
+
+
+def _date_key(date_str: str) -> int:
+    """Convert MMMYYYY to sortable int (e.g., Jun2024 -> 202406)."""
+    months = {
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+        "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+    }
+    if len(date_str) < 4:
+        return 0
+    month_str = date_str[:3].lower()
+    year_str = date_str[3:]
+    month = months.get(month_str, 0)
+    try:
+        year = int(year_str)
+    except ValueError:
+        return 0
+    return year * 100 + month
+
+
 def process_resume_message(message_body: str):
     """Process a single resume from a queue message.
     
@@ -200,10 +267,14 @@ def process_resume_message(message_body: str):
             individual=individual_entries,
         )
 
+        # Build skill timeline from project experience
+        skill_timeline = _build_skill_timeline(individual_raw)
+
         # =============================================
         # STEP 6: Skills Matching
         # =============================================
-        skills_matched = match_candidate_skills(individual_raw, parsed_data.get("certifications", []), jd)
+        technical_skills = parsed_data.get("technical_skills", [])
+        skills_matched = match_candidate_skills(individual_raw, parsed_data.get("certifications", []), jd, technical_skills)
 
         # =============================================
         # STEP 7: Gap & Discrepancy Detection (Risk Analysis)
@@ -291,6 +362,7 @@ def process_resume_message(message_body: str):
             rejection_reasons=rejection_reasons,
             classification_folder=classification_folder,
             recruiter_summary=recruiter_summary,
+            skill_timeline=skill_timeline,
             confidence_scores=confidence,
             cost_tracking=CostTracking(**total_tokens),
             is_duplicate=False,

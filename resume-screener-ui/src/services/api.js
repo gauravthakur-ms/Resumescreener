@@ -19,8 +19,8 @@ export const uploadJD = (formData) =>
   api.post('/jd', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
-export const uploadJDText = (text, title, project_id) =>
-  api.post('/jd', { text, title, project_id });
+export const uploadJDText = (text, title, project_id, rr_id) =>
+  api.post('/jd', { text, title, project_id, rr_id });
 
 // Resume endpoints
 export const uploadResumes = (jdId, formData) =>
@@ -34,12 +34,13 @@ export const getBatchStatus = (batchId) => api.get(`/batch/${batchId}/status`);
 export const deleteBatch = (batchId) => api.delete(`/batch/${batchId}`);
 export const getBatchResults = (batchId, top, sort = 'match_score') =>
   api.get(`/batch/${batchId}/results`, { params: { top, sort } });
-export const getBatchExport = (batchId) => api.get(`/batch/${batchId}/export`, { responseType: 'blob' });
+export const getBatchExport = (batchId, candidates) => api.post(`/batch/${batchId}/export`, { candidates }, { responseType: 'blob' });
 
 // Screened Resumes / Candidates
 export const getCandidatesByJd = (jdId) => api.get(`/jd/${jdId}/candidates`);
 export const deleteCandidate = (candidateId, jdId) => api.delete(`/candidate/${candidateId}`, { params: { jd_id: jdId } });
 export const getJdExport = (jdId, candidates) => api.post(`/jd/${jdId}/export`, { candidates }, { responseType: 'blob' });
+export const downloadResume = (candidateId, jdId) => api.get(`/candidate/${candidateId}/download`, { params: { jd_id: jdId }, responseType: 'blob' });
 
 // Health
 export const healthCheck = () => api.get('/health');

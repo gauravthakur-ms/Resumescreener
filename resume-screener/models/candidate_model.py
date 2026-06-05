@@ -82,6 +82,7 @@ class Candidate(BaseModel):
     classification_folder: str = "rejected"
 
     recruiter_summary: str = ""
+    skill_timeline: dict[str, dict] = Field(default_factory=dict)  # skill -> {period, project}
     confidence_scores: ConfidenceScores = Field(default_factory=ConfidenceScores)
     cost_tracking: CostTracking = Field(default_factory=CostTracking)
 

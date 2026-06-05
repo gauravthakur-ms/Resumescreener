@@ -47,12 +47,18 @@ def match_candidate_skills(
     individual_exp: list[dict],
     certifications: list[str],
     jd: dict,
+    technical_skills: list[str] | None = None,
 ) -> SkillsMatched:
     """Match candidate skills against JD categories."""
     # Collect all skills from work experience
     all_candidate_skills = set()
     for entry in individual_exp:
         for skill in entry.get("skills_used", []):
+            all_candidate_skills.add(skill)
+
+    # Also include skills extracted from the full resume (skills section, projects, etc.)
+    if technical_skills:
+        for skill in technical_skills:
             all_candidate_skills.add(skill)
 
     skills_config = jd.get("skills", {})
@@ -103,10 +109,14 @@ def calculate_score(
     exp_ratio = min(total_exp / max(min_exp, 1), 1.0)
     experience_score = exp_ratio * w_experience * 100
 
-    # Certifications
+    # Certifications (substring match to handle prefixes like "Microsoft Certified: ...")
     certs_preferred = jd.get("certifications_preferred", [])
-    certs_lower = {c.lower() for c in certifications_found}
-    certs_matched = sum(1 for c in certs_preferred if c.lower() in certs_lower)
+    certs_found_lower = [c.lower() for c in certifications_found]
+    certs_matched = 0
+    for pref_cert in certs_preferred:
+        pref_lower = pref_cert.lower()
+        if any(pref_lower in found or found in pref_lower for found in certs_found_lower):
+            certs_matched += 1
     certs_total = max(len(certs_preferred), 1)
     certification_score = (certs_matched / certs_total) * w_certs * 100
 

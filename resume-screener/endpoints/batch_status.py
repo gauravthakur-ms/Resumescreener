@@ -39,6 +39,7 @@ def handle_batch_status(req: func.HttpRequest) -> func.HttpResponse:
     response = {
         "batch_id": batch_id,
         "jd_id": batch.get("jd_id"),
+        "jd_title": batch.get("jd_title", ""),
         "status": batch.get("status"),
         "total": total,
         "processed": processed,

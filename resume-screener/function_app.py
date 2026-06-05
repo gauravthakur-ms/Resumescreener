@@ -93,9 +93,9 @@ def get_batch_results(req: func.HttpRequest) -> func.HttpResponse:
     return handle_batch_results(req)
 
 
-@app.route(route="batch/{batch_id}/export", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+@app.route(route="batch/{batch_id}/export", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def get_batch_export(req: func.HttpRequest) -> func.HttpResponse:
-    """GET /api/batch/{batch_id}/export — Download Excel export."""
+    """POST /api/batch/{batch_id}/export — Download Excel export for filtered candidates."""
     return handle_batch_export(req)
 
 
@@ -115,6 +115,13 @@ def get_jd_export(req: func.HttpRequest) -> func.HttpResponse:
 def delete_candidate(req: func.HttpRequest) -> func.HttpResponse:
     """DELETE /api/candidate/{candidate_id}?jd_id={jd_id} — Delete a screened resume."""
     return handle_delete_candidate(req)
+
+
+@app.route(route="candidate/{candidate_id}/download", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+def download_candidate_resume(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/candidate/{candidate_id}/download?jd_id={jd_id} — Download original resume file."""
+    from endpoints.resume_download import handle_resume_download
+    return handle_resume_download(req)
 
 
 @app.route(route="health", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)

@@ -26,6 +26,8 @@ export default function JobDescriptions() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [projectId, setProjectId] = useState('');
   const [projectIdError, setProjectIdError] = useState('');
+  const [rrId, setRrId] = useState('');
+  const [rrIdError, setRrIdError] = useState('');
 
   const fetchJDs = async () => {
     try {
@@ -72,6 +74,7 @@ export default function JobDescriptions() {
   const startEditing = () => {
     setEditData({
       title: selectedJd.title || '',
+      rr_id: selectedJd.rr_id || '',
       project_id: selectedJd.project_id || '',
       domain: selectedJd.domain || '',
       min_experience_years: selectedJd.min_experience_years || 0,
@@ -129,15 +132,16 @@ export default function JobDescriptions() {
   };
 
   const handleSave = async () => {
-    if (!editData.project_id?.trim()) {
-      toast.error('Project ID is required');
+    if (!editData.rr_id?.trim()) {
+      toast.error('RR ID is required');
       return;
     }
     setSaving(true);
     try {
       const payload = {
         title: editData.title,
-        project_id: editData.project_id.trim(),
+        rr_id: (editData.rr_id || '').trim(),
+        project_id: (editData.project_id || '').trim(),
         domain: editData.domain,
         min_experience_years: parseFloat(editData.min_experience_years) || 0,
         skills: {
@@ -164,19 +168,24 @@ export default function JobDescriptions() {
   };
 
   const handleUpload = async () => {
-    if (!projectId.trim()) {
-      setProjectIdError('Project ID is required');
-      return;
+    let hasError = false;
+    if (!rrId.trim()) {
+      setRrIdError('RR ID is required');
+      hasError = true;
     }
+    if (hasError) return;
+
     setUploading(true);
     try {
       if (uploadMode === 'file' && file) {
         const formData = new FormData();
         formData.append('jd_file', file);
         formData.append('project_id', projectId.trim());
+        formData.append('rr_id', rrId.trim());
+        if (title.trim()) formData.append('title', title.trim());
         await uploadJD(formData);
       } else if (uploadMode === 'text' && text.trim()) {
-        await uploadJDText(text, title, projectId.trim());
+        await uploadJDText(text, title, projectId.trim(), rrId.trim());
       } else {
         toast.error('Please provide a file or text');
         setUploading(false);
@@ -189,6 +198,8 @@ export default function JobDescriptions() {
       setTitle('');
       setProjectId('');
       setProjectIdError('');
+      setRrId('');
+      setRrIdError('');
       fetchJDs();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Upload failed');
@@ -201,6 +212,17 @@ export default function JobDescriptions() {
     if (!dateStr) return '—';
     const d = new Date(dateStr);
     return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  const getAging = (dateStr) => {
+    if (!dateStr) return '';
+    const created = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - created;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return 'Created today';
+    if (diffDays === 1) return 'Created 1 day ago';
+    return `Created ${diffDays} days ago`;
   };
 
   if (loading) {
@@ -251,13 +273,13 @@ export default function JobDescriptions() {
             >
               {/* Card Content */}
               <div className="flex-1">
-                {/* Line 1 — Icon + Job ID + Delete */}
+                {/* Line 1 — Icon + RR ID + Delete */}
                 <div className="flex items-center gap-2.5 mb-2">
                   <div className="w-9 h-9 rounded-lg bg-coral/10 flex items-center justify-center shrink-0">
                     <Briefcase size={16} className="text-coral" />
                   </div>
                   <span className="text-[13px] font-semibold font-mono text-coral flex-1 min-w-0 truncate">
-                    {jd.project_id || '—'}
+                    {jd.rr_id || '—'}
                   </span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Badge variant="default">{jd.domain || 'General'}</Badge>
@@ -311,7 +333,10 @@ export default function JobDescriptions() {
               </div>
 
               {/* Results Button — always anchored to bottom */}
-              <div className="mt-3 pt-2.5 border-t border-dark-600 flex justify-end">
+              <div className="mt-3 pt-2.5 border-t border-dark-600 flex items-center justify-between">
+                <span className="text-[11px] text-white/80 font-medium italic">
+                  {getAging(jd.uploaded_at)}
+                </span>
                 <button
                   onClick={(e) => { e.stopPropagation(); navigate(`/screened/${jd.id}/results`); }}
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-coral border border-coral/30 hover:bg-coral/10 hover:border-coral/50 rounded-md transition-all duration-200"
@@ -325,26 +350,40 @@ export default function JobDescriptions() {
       )}
 
       {/* Upload Modal */}
-      <Modal isOpen={showModal} onClose={() => { setShowModal(false); setProjectIdError(''); }} title="Upload Job Description">
+      <Modal isOpen={showModal} onClose={() => { setShowModal(false); setProjectIdError(''); setRrIdError(''); }} title="Upload Job Description">
         <div className="space-y-4">
-          {/* Project ID — mandatory first field */}
+          {/* RR ID — mandatory */}
           <div>
             <label className="text-xs text-muted block mb-1">
-              Project ID <span className="text-coral">*</span>
+              RR ID <span className="text-coral">*</span>
             </label>
             <input
               type="text"
-              placeholder="Enter Project ID (e.g. PROJ-2024-001)"
-              value={projectId}
-              onChange={(e) => { setProjectId(e.target.value); if (e.target.value.trim()) setProjectIdError(''); }}
-              onBlur={() => { if (!projectId.trim()) setProjectIdError('Project ID is required'); }}
+              placeholder="Enter RR ID"
+              value={rrId}
+              onChange={(e) => { setRrId(e.target.value); if (e.target.value.trim()) setRrIdError(''); }}
+              onBlur={() => { if (!rrId.trim()) setRrIdError('RR ID is required'); }}
               className={`w-full px-3.5 py-2.5 bg-[#1a1a1a] border rounded-lg text-[#f5f5f5] text-sm placeholder:text-muted focus:outline-none focus:border-coral focus:shadow-[0_0_0_2px_rgba(255,69,68,0.15)] ${
-                projectIdError ? 'border-coral bg-[rgba(255,69,68,0.05)]' : 'border-[#333]'
+                rrIdError ? 'border-coral bg-[rgba(255,69,68,0.05)]' : 'border-[#333]'
               }`}
             />
-            {projectIdError && (
-              <p className="text-coral text-xs mt-1">⚠ {projectIdError}</p>
+            {rrIdError && (
+              <p className="text-coral text-xs mt-1">⚠ {rrIdError}</p>
             )}
+          </div>
+
+          {/* Project ID — optional */}
+          <div>
+            <label className="text-xs text-muted block mb-1">
+              Project ID
+            </label>
+            <input
+              type="text"
+              placeholder="Enter Project ID (optional)"
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              className="w-full px-3.5 py-2.5 bg-[#1a1a1a] border border-[#333] rounded-lg text-[#f5f5f5] text-sm placeholder:text-muted focus:outline-none focus:border-coral focus:shadow-[0_0_0_2px_rgba(255,69,68,0.15)]"
+            />
           </div>
 
           {/* Toggle */}
@@ -368,20 +407,29 @@ export default function JobDescriptions() {
           </div>
 
           {uploadMode === 'file' ? (
-            <div className="border-2 border-dashed border-dark-600 rounded-xl p-8 text-center hover:border-coral/40 transition-colors">
+            <div className="space-y-3">
               <input
-                type="file"
-                accept=".pdf,.docx"
-                onChange={(e) => setFile(e.target.files[0])}
-                className="hidden"
-                id="jd-file"
+                type="text"
+                placeholder="Job Title (optional)"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full px-4 py-2.5 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm placeholder:text-muted focus:outline-none focus:border-coral"
               />
-              <label htmlFor="jd-file" className="cursor-pointer">
-                <FileText size={32} className="mx-auto text-muted mb-2" />
-                <p className="text-sm text-muted">
-                  {file ? file.name : 'Click to select PDF or DOCX'}
-                </p>
-              </label>
+              <div className="border-2 border-dashed border-dark-600 rounded-xl p-8 text-center hover:border-coral/40 transition-colors">
+                <input
+                  type="file"
+                  accept=".pdf,.docx"
+                  onChange={(e) => setFile(e.target.files[0])}
+                  className="hidden"
+                  id="jd-file"
+                />
+                <label htmlFor="jd-file" className="cursor-pointer">
+                  <FileText size={32} className="mx-auto text-muted mb-2" />
+                  <p className="text-sm text-muted">
+                    {file ? file.name : 'Click to select PDF or DOCX'}
+                  </p>
+                </label>
+              </div>
             </div>
           ) : (
             <div className="space-y-3">
@@ -413,7 +461,7 @@ export default function JobDescriptions() {
             <Button
               className="flex-1"
               onClick={handleUpload}
-              disabled={uploading || !projectId.trim()}
+              disabled={uploading || !rrId.trim()}
             >
               {uploading ? 'Uploading...' : 'Upload'}
             </Button>
@@ -437,14 +485,18 @@ export default function JobDescriptions() {
             ) : (
               <>
                 {/* Top Info Row */}
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-6 gap-4">
                   <div>
-                    <p className="text-xs text-muted">Domain</p>
-                    <p className="text-sm text-white font-medium">{selectedJd.domain || 'N/A'}</p>
+                    <p className="text-xs text-muted">RR ID</p>
+                    <p className="text-sm font-mono text-white font-medium">{selectedJd.rr_id || 'N/A'}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted">Project ID</p>
-                    <p className="text-sm font-mono text-coral">{selectedJd.project_id || 'N/A'}</p>
+                    <p className="text-sm font-mono text-white/80">{selectedJd.project_id || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted">Domain</p>
+                    <p className="text-sm text-white font-medium">{selectedJd.domain || 'N/A'}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted">Min Experience</p>
@@ -453,6 +505,10 @@ export default function JobDescriptions() {
                   <div>
                     <p className="text-xs text-muted">Uploaded</p>
                     <p className="text-sm text-white font-medium">{formatDate(selectedJd.uploaded_at)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted">Aging</p>
+                    <p className="text-sm text-white font-medium">{getAging(selectedJd.uploaded_at)}</p>
                   </div>
                 </div>
 
@@ -560,15 +616,27 @@ export default function JobDescriptions() {
 
             {editMode === 'form' ? (
               <>
-            <div>
-              <label className="text-xs text-muted block mb-1">Project ID <span className="text-coral">*</span></label>
-              <input
-                type="text"
-                placeholder="Enter Project ID (e.g. PROJ-2024-001)"
-                value={editData.project_id}
-                onChange={(e) => setEditData({ ...editData, project_id: e.target.value })}
-                className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-coral"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted block mb-1">RR ID <span className="text-coral">*</span></label>
+                <input
+                  type="text"
+                  placeholder="Enter RR ID"
+                  value={editData.rr_id}
+                  onChange={(e) => setEditData({ ...editData, rr_id: e.target.value })}
+                  className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-coral"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted block mb-1">Project ID</label>
+                <input
+                  type="text"
+                  placeholder="Enter Project ID (optional)"
+                  value={editData.project_id}
+                  onChange={(e) => setEditData({ ...editData, project_id: e.target.value })}
+                  className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-coral"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -607,20 +675,20 @@ export default function JobDescriptions() {
             <div>
               <label className="text-xs text-muted block mb-1">Primary Skills <span className="text-muted">(comma-separated)</span></label>
               <textarea
-                rows={2}
+                rows={4}
                 value={editData.skills.primary}
                 onChange={(e) => setEditData({ ...editData, skills: { ...editData.skills, primary: e.target.value } })}
-                className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral resize-none"
+                className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral resize-y min-h-[80px]"
               />
             </div>
 
             <div>
               <label className="text-xs text-muted block mb-1">Secondary Skills <span className="text-muted">(comma-separated)</span></label>
               <textarea
-                rows={2}
+                rows={4}
                 value={editData.skills.secondary}
                 onChange={(e) => setEditData({ ...editData, skills: { ...editData.skills, secondary: e.target.value } })}
-                className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral resize-none"
+                className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral resize-y min-h-[80px]"
               />
             </div>
 
@@ -689,7 +757,7 @@ export default function JobDescriptions() {
               <Button variant="secondary" className="flex-1" onClick={() => setEditing(false)}>
                 <X size={14} /> Cancel
               </Button>
-              <Button className="flex-1" onClick={handleSave} disabled={saving || !editData.project_id?.trim()}>
+              <Button className="flex-1" onClick={handleSave} disabled={saving || !editData.rr_id?.trim()}>
                 <Save size={14} /> {saving ? 'Saving...' : 'Save Changes'}
               </Button>
             </div>

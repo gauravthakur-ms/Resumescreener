@@ -4,7 +4,7 @@ import Header from './Header';
 
 export default function Layout({ children }) {
   const [collapsed, setCollapsed] = useState(false);
-  const [role, setRole] = useState(() => localStorage.getItem('app_role') || 'admin');
+  const [role, setRole] = useState(() => localStorage.getItem('app_role') || 'user');
 
   const handleRoleChange = (newRole) => {
     setRole(newRole);

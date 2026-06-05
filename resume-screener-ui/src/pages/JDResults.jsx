@@ -14,6 +14,7 @@ import {
   Download,
 } from 'lucide-react';
 import { Card, Badge, Button, ScoreGauge, ProgressBar, Skeleton } from '../components/UI';
+import SkillBadge from '../components/SkillBadge';
 import { getCandidatesByJd, getJdExport } from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -283,6 +284,15 @@ export default function JDResults() {
               )}
             </div>
 
+            {/* Recruiter Summary - always visible */}
+            {candidate.recruiter_summary && (
+              <div className="mx-4 mb-3 px-3 py-2.5 rounded-lg bg-dark-700/40 border-l-2 border-warning/50">
+                <p className="text-[13px] text-white/80 leading-relaxed">
+                  {candidate.recruiter_summary}
+                </p>
+              </div>
+            )}
+
             {/* Expanded Detail */}
             {expandedId === candidate.id && (
               <div className="border-t border-dark-600 p-4 bg-dark-900/50 space-y-4">
@@ -349,19 +359,13 @@ export default function JDResults() {
                       <div className="flex flex-wrap gap-1.5">
                         {Object.entries(candidate.skills_matched.primary).map(
                           ([skill, matched]) => (
-                            <span
+                            <SkillBadge
                               key={skill}
-                              className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md font-medium ${
-                                matched
-                                  ? 'bg-coral/10 text-coral border border-coral/20'
-                                  : 'bg-red-500/5 text-red-400/60 border border-red-500/10 line-through decoration-red-400/40'
-                              }`}
-                            >
-                              <span className={`text-[10px] ${matched ? 'text-green-400' : 'text-red-400/60'}`}>
-                                {matched ? '✓' : '✕'}
-                              </span>
-                              {skill}
-                            </span>
+                              skill={skill}
+                              matched={matched}
+                              variant="primary"
+                              timeline={candidate.skill_timeline}
+                            />
                           )
                         )}
                       </div>
@@ -375,19 +379,13 @@ export default function JDResults() {
                       <div className="flex flex-wrap gap-1.5">
                         {Object.entries(candidate.skills_matched.secondary).map(
                           ([skill, matched]) => (
-                            <span
+                            <SkillBadge
                               key={skill}
-                              className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md font-medium ${
-                                matched
-                                  ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                                  : 'bg-blue-500/5 text-blue-400/50 border border-blue-500/10 line-through decoration-blue-400/40'
-                              }`}
-                            >
-                              <span className={`text-[10px] ${matched ? 'text-green-400' : 'text-red-400/60'}`}>
-                                {matched ? '✓' : '✕'}
-                              </span>
-                              {skill}
-                            </span>
+                              skill={skill}
+                              matched={matched}
+                              variant="secondary"
+                              timeline={candidate.skill_timeline}
+                            />
                           )
                         )}
                       </div>
@@ -401,7 +399,7 @@ export default function JDResults() {
                       <div className="flex flex-wrap gap-1.5">
                         {certsPreferred.map((cert) => {
                           const matched = (candidate.certifications || []).some(
-                            (c) => c.toLowerCase() === cert.toLowerCase()
+                            (c) => c.toLowerCase().includes(cert.toLowerCase()) || cert.toLowerCase().includes(c.toLowerCase())
                           );
                           return (
                             <span
@@ -435,15 +433,7 @@ export default function JDResults() {
                   </div>
                 )}
 
-                {/* Recruiter Summary */}
-                {candidate.recruiter_summary && (
-                  <div className="p-3 bg-dark-700 rounded-lg">
-                    <p className="text-xs text-muted font-medium mb-1">Recruiter Summary</p>
-                    <p className="text-sm text-white leading-relaxed">
-                      {candidate.recruiter_summary}
-                    </p>
-                  </div>
-                )}
+                {/* Recruiter Summary removed - now shown in card header */}
               </div>
             )}
           </Card>

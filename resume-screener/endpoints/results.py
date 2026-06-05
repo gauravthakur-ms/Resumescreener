@@ -60,6 +60,7 @@ def handle_batch_results(req: func.HttpRequest) -> func.HttpResponse:
     response = {
         "batch_id": batch_id,
         "jd_id": jd_id,
+        "jd_title": jd.get("title", "") if jd else "",
         "certifications_preferred": jd.get("certifications_preferred", []) if jd else [],
         "total_results": len(candidates),
         "sort_by": sort_by,
@@ -74,13 +75,12 @@ def handle_batch_results(req: func.HttpRequest) -> func.HttpResponse:
 
 
 def handle_batch_export(req: func.HttpRequest) -> func.HttpResponse:
-    """GET /api/batch/{batch_id}/export — Generate and return downloadable Excel.
+    """POST /api/batch/{batch_id}/export — Generate and return downloadable Excel.
     
     Process:
-    1. Query all candidates for batch from Cosmos
+    1. Accept filtered candidates from POST body (or fall back to all)
     2. Generate Excel with 'All Candidates' and 'Top 10 Ranking' sheets
-    3. Upload to Blob /exports/
-    4. Return download URL (SAS URL, 1 hour expiry)
+    3. Return Excel file as download
     """
     batch_id = req.route_params.get("batch_id")
     if not batch_id:
@@ -99,8 +99,17 @@ def handle_batch_export(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     try:
-        # Get all candidates
-        candidates = get_candidates_by_batch(batch_id)
+        # Accept filtered candidates from POST body; fall back to all candidates
+        body = req.get_body().decode("utf-8", errors="ignore")
+        if body:
+            payload = json.loads(body)
+            candidates = payload.get("candidates", [])
+        else:
+            candidates = get_candidates_by_batch(batch_id)
+
+        if not candidates:
+            # Fall back to all candidates if body was empty list
+            candidates = candidates or get_candidates_by_batch(batch_id)
 
         if not candidates:
             return func.HttpResponse(

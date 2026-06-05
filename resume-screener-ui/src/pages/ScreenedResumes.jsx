@@ -12,9 +12,11 @@ import {
   ChevronRight,
   Search,
   X,
+  Download,
+  ArrowDownToLine,
 } from 'lucide-react';
 import { Card, Badge, Button, Modal, ProgressBar, Skeleton, EmptyState } from '../components/UI';
-import { getJDs, getBatches, getCandidatesByJd, deleteCandidate, deleteBatch, getBatchStatus } from '../services/api';
+import { getJDs, getBatches, getCandidatesByJd, deleteCandidate, deleteBatch, getBatchStatus, getJdExport, downloadResume } from '../services/api';
 import toast from 'react-hot-toast';
 
 export default function ScreenedResumes() {
@@ -31,6 +33,8 @@ export default function ScreenedResumes() {
   const [deleteTarget, setDeleteTarget] = useState(null); // jd row to delete
   const [deleting, setDeleting] = useState(false);
   const [deletingCandidate, setDeletingCandidate] = useState(null);
+  const [exportingJdId, setExportingJdId] = useState(null);
+  const [downloadingCandidateId, setDownloadingCandidateId] = useState(null);
 
   const fetchData = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -153,6 +157,27 @@ export default function ScreenedResumes() {
     }
   };
 
+  // Download resume for a candidate
+  const handleDownloadResume = async (candidate, jdId) => {
+    setDownloadingCandidateId(candidate.id);
+    try {
+      const res = await downloadResume(candidate.id, jdId);
+      const filename = candidate.file_name || `resume_${candidate.id}.pdf`;
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Failed to download resume');
+    } finally {
+      setDownloadingCandidateId(null);
+    }
+  };
+
   const getStatusVariant = (status) => status === 'completed' ? 'completed' : 'processing';
 
   const getRecommendationVariant = (rec) => {
@@ -167,6 +192,36 @@ export default function ScreenedResumes() {
   // Navigate to JD-specific results page
   const goToResults = (row) => {
     navigate(`/screened/${row.jd.id}/results`);
+  };
+
+  // Export Excel for a JD
+  const handleExportJd = async (row) => {
+    setExportingJdId(row.jd.id);
+    try {
+      const candidatesRes = await getCandidatesByJd(row.jd.id);
+      const candidates = candidatesRes.data?.candidates || [];
+      if (!candidates.length) {
+        toast.error('No candidates to export');
+        return;
+      }
+      const res = await getJdExport(row.jd.id, candidates);
+      const disposition = res.headers['content-disposition'] || '';
+      const match = disposition.match(/filename="?(.+?)"?$/);
+      const filename = match ? match[1] : `jd_export_${row.jd.title?.replace(/\s+/g, '_') || row.jd.id}.xlsx`;
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Export downloaded');
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setExportingJdId(null);
+    }
   };
 
   const totalPages = Math.ceil(jdRows.length / PAGE_SIZE);
@@ -263,6 +318,13 @@ export default function ScreenedResumes() {
                             className="flex items-center gap-1 px-2.5 py-1.5 text-xs bg-dark-700 hover:bg-dark-600 text-muted hover:text-blue-400 rounded-md transition-colors"
                           >
                             <Users size={12} /> Profiles
+                          </button>
+                          <button
+                            onClick={() => handleExportJd(row)}
+                            disabled={exportingJdId === row.jd.id}
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs bg-dark-700 hover:bg-dark-600 text-muted hover:text-green-400 rounded-md transition-colors disabled:opacity-50"
+                          >
+                            <Download size={12} /> {exportingJdId === row.jd.id ? 'Exporting...' : 'Export'}
                           </button>
                           <button
                             onClick={() => setDeleteTarget(row)}
@@ -411,6 +473,14 @@ export default function ScreenedResumes() {
                       <Badge variant={getRecommendationVariant(c.recommendation)}>
                         {c.recommendation || '—'}
                       </Badge>
+                      <button
+                        onClick={() => handleDownloadResume(c, profilesModal.jd.id)}
+                        disabled={downloadingCandidateId === c.id}
+                        className="p-1 rounded hover:bg-dark-600 text-muted hover:text-green-400 transition-colors disabled:opacity-30"
+                        title="Download resume"
+                      >
+                        <ArrowDownToLine size={14} />
+                      </button>
                       <button
                         onClick={() => handleDeleteCandidate(c.id, profilesModal.jd.id)}
                         disabled={deletingCandidate === c.id}

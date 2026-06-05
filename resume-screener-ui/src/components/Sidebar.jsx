@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 const navItems = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard', adminOnly: true },
+  { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', adminOnly: true },
   { path: '/jobs', icon: FileText, label: 'Job Descriptions' },
   { path: '/upload', icon: Upload, label: 'Upload Resumes' },
   { path: '/screened', icon: UserCheck, label: 'Screened Resumes' },

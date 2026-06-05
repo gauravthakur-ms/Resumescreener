@@ -25,6 +25,7 @@ class Thresholds(BaseModel):
 class JobDescription(BaseModel):
     id: str
     title: str
+    rr_id: str = ""
     project_id: str = ""
     uploaded_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
     domain: str = "General"

@@ -32,6 +32,8 @@ def handle_jd_upload(req: func.HttpRequest) -> func.HttpResponse:
         file_name = None
         file_bytes = None
         project_id = ""
+        rr_id = ""
+        user_title = ""
 
         # Check for file upload (multipart)
         files = req.files
@@ -41,8 +43,10 @@ def handle_jd_upload(req: func.HttpRequest) -> func.HttpResponse:
                 file_name = file_storage.filename
                 break
 
-            # Extract project_id from form params for file uploads
+            # Extract project_id, rr_id, and title from form params for file uploads
             project_id = req.params.get("project_id", "") or req.form.get("project_id", "")
+            rr_id = req.params.get("rr_id", "") or req.form.get("rr_id", "")
+            user_title = (req.params.get("title", "") or req.form.get("title", "")).strip()
 
             if file_bytes and file_name:
                 # Validate file size
@@ -60,8 +64,17 @@ def handle_jd_upload(req: func.HttpRequest) -> func.HttpResponse:
                 body = req.get_json()
                 jd_text = body.get("text", "")
                 project_id = body.get("project_id", "")
+                rr_id = body.get("rr_id", "")
+                user_title = body.get("title", "").strip()
             except ValueError:
                 pass
+
+        if not rr_id.strip():
+            return func.HttpResponse(
+                json.dumps({"error": "RR ID is required"}),
+                status_code=400,
+                mimetype="application/json",
+            )
 
         if not jd_text or not jd_text.strip():
             return func.HttpResponse(
@@ -79,11 +92,13 @@ def handle_jd_upload(req: func.HttpRequest) -> func.HttpResponse:
                 mimetype="application/json",
             )
 
-        # Build JD model
+        # Build JD model — user-entered title takes priority over LLM-extracted
         jd_id = str(uuid.uuid4())
+        final_title = user_title if user_title else parsed.get("title", "Untitled Role")
         jd = JobDescription(
             id=jd_id,
-            title=parsed.get("title", "Untitled Role"),
+            title=final_title,
+            rr_id=rr_id.strip(),
             project_id=project_id,
             domain=parsed.get("domain", "General"),
             min_experience_years=parsed.get("min_experience_years", 0),
@@ -142,6 +157,7 @@ def handle_get_jds(req: func.HttpRequest) -> func.HttpResponse:
             result.append({
                 "id": jd.get("id"),
                 "title": jd.get("title"),
+                "rr_id": jd.get("rr_id", ""),
                 "project_id": jd.get("project_id", ""),
                 "domain": jd.get("domain"),
                 "uploaded_at": jd.get("uploaded_at"),
@@ -247,7 +263,7 @@ def handle_update_jd(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     # Update allowed fields
-    updatable = ["title", "project_id", "domain", "min_experience_years", "skills",
+    updatable = ["title", "rr_id", "project_id", "domain", "min_experience_years", "skills",
                  "certifications_preferred", "scoring_weights", "thresholds", "raw_text"]
     for field in updatable:
         if field in body:

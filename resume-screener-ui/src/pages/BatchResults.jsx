@@ -9,9 +9,11 @@ import {
   Award,
   AlertTriangle,
   Filter,
+  ArrowUpDown,
+  Calendar,
 } from 'lucide-react';
 import { Card, Badge, Button, ScoreGauge, ProgressBar, Skeleton } from '../components/UI';
-import BatchIdDisplay from '../components/BatchIdDisplay';
+import SkillBadge from '../components/SkillBadge';
 import { getBatchResults, getBatchStatus, getBatchExport } from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -19,10 +21,14 @@ export default function BatchResults() {
   const { batchId } = useParams();
   const [results, setResults] = useState([]);
   const [batchInfo, setBatchInfo] = useState(null);
+  const [jdTitle, setJdTitle] = useState('');
   const [certsPreferred, setCertsPreferred] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [filter, setFilter] = useState('all'); // all | Select | Review | Reject
+  const [sortOrder, setSortOrder] = useState('desc'); // desc = High to Low, asc = Low to High
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
@@ -33,6 +39,7 @@ export default function BatchResults() {
           getBatchStatus(batchId),
         ]);
         setResults(resultsRes.data?.candidates || []);
+        setJdTitle(resultsRes.data?.jd_title || '');
         setCertsPreferred(resultsRes.data?.certifications_preferred || []);
         setBatchInfo(statusRes.data);
       } catch {
@@ -47,7 +54,7 @@ export default function BatchResults() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const res = await getBatchExport(batchId);
+      const res = await getBatchExport(batchId, filtered);
       const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -74,9 +81,41 @@ export default function BatchResults() {
     return 'Reject';
   };
 
-  const filtered = filter === 'all'
-    ? results
-    : results.filter((c) => getCategory(c.recommendation) === filter);
+  const filtered = (() => {
+    let list = filter === 'all'
+      ? [...results]
+      : results.filter((c) => getCategory(c.recommendation) === filter);
+
+    // Date filter
+    if (dateFrom) {
+      const from = new Date(dateFrom);
+      list = list.filter((c) => {
+        const d = c.screened_at || c.processed_at || c._ts;
+        if (!d) return true;
+        const candidate_date = typeof d === 'number' ? new Date(d * 1000) : new Date(d);
+        return candidate_date >= from;
+      });
+    }
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+      list = list.filter((c) => {
+        const d = c.screened_at || c.processed_at || c._ts;
+        if (!d) return true;
+        const candidate_date = typeof d === 'number' ? new Date(d * 1000) : new Date(d);
+        return candidate_date <= to;
+      });
+    }
+
+    // Sort by match score
+    list.sort((a, b) => {
+      const scoreA = a.scoring?.match_score || 0;
+      const scoreB = b.scoring?.match_score || 0;
+      return sortOrder === 'desc' ? scoreB - scoreA : scoreA - scoreB;
+    });
+
+    return list;
+  })();
 
   const getRecommendationVariant = (rec) => {
     const cat = getCategory(rec);
@@ -106,11 +145,13 @@ export default function BatchResults() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-white">Screening Results</h1>
-          <div className="mt-2">
-            <BatchIdDisplay batchId={batchId} />
-          </div>
+          {jdTitle && (
+            <p className="text-muted mt-1 text-sm">
+              Job Description: <span className="text-white font-medium">{jdTitle}</span>
+            </p>
+          )}
         </div>
-        <Button onClick={handleExport} disabled={exporting} variant="secondary">
+        <Button onClick={handleExport} disabled={exporting || filtered.length === 0} variant="secondary">
           <Download size={16} /> {exporting ? 'Exporting...' : 'Export Excel'}
         </Button>
       </div>
@@ -151,6 +192,50 @@ export default function BatchResults() {
             {f === 'all' ? 'All' : f} {f !== 'all' && `(${f === 'Select' ? selectCount : f === 'Review' ? reviewCount : rejectCount})`}
           </button>
         ))}
+      </div>
+
+      {/* Sort & Date Filters */}
+      <div className="flex flex-wrap items-center gap-4">
+        {/* Sort by Score */}
+        <div className="flex items-center gap-2">
+          <ArrowUpDown size={14} className="text-white/70" />
+          <span className="text-xs text-white/80 font-medium">Score:</span>
+          <select
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value)}
+            className="px-2.5 py-1.5 text-xs bg-dark-700 border border-dark-600 rounded-lg text-white focus:outline-none focus:border-coral"
+          >
+            <option value="desc">High to Low</option>
+            <option value="asc">Low to High</option>
+          </select>
+        </div>
+
+        {/* Date Range */}
+        <div className="flex items-center gap-2">
+          <Calendar size={14} className="text-white/70" />
+          <span className="text-xs text-white/80 font-medium">From:</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="px-2.5 py-1.5 text-xs bg-dark-700 border border-dark-600 rounded-lg text-white focus:outline-none focus:border-coral"
+          />
+          <span className="text-xs text-white/80 font-medium">To:</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="px-2.5 py-1.5 text-xs bg-dark-700 border border-dark-600 rounded-lg text-white focus:outline-none focus:border-coral"
+          />
+          {(dateFrom || dateTo) && (
+            <button
+              onClick={() => { setDateFrom(''); setDateTo(''); }}
+              className="px-2 py-1.5 text-xs bg-dark-700 text-muted hover:text-white rounded-lg transition-colors"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Results List */}
@@ -195,6 +280,15 @@ export default function BatchResults() {
                 <ChevronDown size={18} className="text-muted" />
               )}
             </div>
+
+            {/* Recruiter Summary - always visible */}
+            {candidate.recruiter_summary && (
+              <div className="mx-4 mb-3 px-3 py-2.5 rounded-lg bg-dark-700/40 border-l-2 border-warning/50">
+                <p className="text-[13px] text-white/80 leading-relaxed">
+                  {candidate.recruiter_summary}
+                </p>
+              </div>
+            )}
 
             {/* Expanded Detail */}
             {expandedId === candidate.id && (
@@ -262,19 +356,13 @@ export default function BatchResults() {
                       <div className="flex flex-wrap gap-1.5">
                         {Object.entries(candidate.skills_matched.primary).map(
                           ([skill, matched]) => (
-                            <span
+                            <SkillBadge
                               key={skill}
-                              className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md font-medium ${
-                                matched
-                                  ? 'bg-coral/10 text-coral border border-coral/20'
-                                  : 'bg-red-500/5 text-red-400/60 border border-red-500/10 line-through decoration-red-400/40'
-                              }`}
-                            >
-                              <span className={`text-[10px] ${matched ? 'text-green-400' : 'text-red-400/60'}`}>
-                                {matched ? '✓' : '✕'}
-                              </span>
-                              {skill}
-                            </span>
+                              skill={skill}
+                              matched={matched}
+                              variant="primary"
+                              timeline={candidate.skill_timeline}
+                            />
                           )
                         )}
                       </div>
@@ -288,19 +376,13 @@ export default function BatchResults() {
                       <div className="flex flex-wrap gap-1.5">
                         {Object.entries(candidate.skills_matched.secondary).map(
                           ([skill, matched]) => (
-                            <span
+                            <SkillBadge
                               key={skill}
-                              className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md font-medium ${
-                                matched
-                                  ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                                  : 'bg-blue-500/5 text-blue-400/50 border border-blue-500/10 line-through decoration-blue-400/40'
-                              }`}
-                            >
-                              <span className={`text-[10px] ${matched ? 'text-green-400' : 'text-red-400/60'}`}>
-                                {matched ? '✓' : '✕'}
-                              </span>
-                              {skill}
-                            </span>
+                              skill={skill}
+                              matched={matched}
+                              variant="secondary"
+                              timeline={candidate.skill_timeline}
+                            />
                           )
                         )}
                       </div>
@@ -314,7 +396,7 @@ export default function BatchResults() {
                       <div className="flex flex-wrap gap-1.5">
                         {certsPreferred.map((cert) => {
                           const matched = (candidate.certifications || []).some(
-                            (c) => c.toLowerCase() === cert.toLowerCase()
+                            (c) => c.toLowerCase().includes(cert.toLowerCase()) || cert.toLowerCase().includes(c.toLowerCase())
                           );
                           return (
                             <span
@@ -348,15 +430,7 @@ export default function BatchResults() {
                   </div>
                 )}
 
-                {/* Recruiter Summary */}
-                {candidate.recruiter_summary && (
-                  <div className="p-3 bg-dark-700 rounded-lg">
-                    <p className="text-xs text-muted font-medium mb-1">Recruiter Summary</p>
-                    <p className="text-sm text-white leading-relaxed">
-                      {candidate.recruiter_summary}
-                    </p>
-                  </div>
-                )}
+                {/* Recruiter Summary removed - now shown in card header */}
               </div>
             )}
           </Card>
