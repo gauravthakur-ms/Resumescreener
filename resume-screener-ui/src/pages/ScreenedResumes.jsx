@@ -14,6 +14,8 @@ import {
   X,
   Download,
   ArrowDownToLine,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import { Card, Badge, Button, Modal, ProgressBar, Skeleton, EmptyState } from '../components/UI';
 import { getJDs, getBatches, getCandidatesByJd, deleteCandidate, deleteBatch, getBatchStatus, getJdExport, downloadResume } from '../services/api';
@@ -35,6 +37,9 @@ export default function ScreenedResumes() {
   const [deletingCandidate, setDeletingCandidate] = useState(null);
   const [exportingJdId, setExportingJdId] = useState(null);
   const [downloadingCandidateId, setDownloadingCandidateId] = useState(null);
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState(new Set());
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
   const fetchData = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -112,6 +117,7 @@ export default function ScreenedResumes() {
 
   // Profiles modal
   const openProfiles = async (row) => {
+    setSelectedCandidateIds(new Set());
     setProfilesModal({ jd: row.jd, candidates: [], loading: true });
     try {
       const res = await getCandidatesByJd(row.jd.id);
@@ -119,6 +125,82 @@ export default function ScreenedResumes() {
     } catch {
       toast.error('Failed to load candidates');
       setProfilesModal(null);
+    }
+  };
+
+  const closeProfiles = () => {
+    setProfilesModal(null);
+    setSelectedCandidateIds(new Set());
+  };
+
+  const toggleCandidateSelection = (id) => {
+    setSelectedCandidateIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (!profilesModal) return;
+    const all = profilesModal.candidates.map((c) => c.id);
+    if (selectedCandidateIds.size === all.length && all.length > 0) {
+      setSelectedCandidateIds(new Set());
+    } else {
+      setSelectedCandidateIds(new Set(all));
+    }
+  };
+
+  const handleBulkDownload = async () => {
+    if (!profilesModal || selectedCandidateIds.size === 0) return;
+    setBulkActionLoading(true);
+    const targets = profilesModal.candidates.filter((c) => selectedCandidateIds.has(c.id));
+    let successCount = 0;
+    for (const c of targets) {
+      try {
+        const res = await downloadResume(c.id, profilesModal.jd.id);
+        const filename = c.file_name || `resume_${c.id}.pdf`;
+        const url = window.URL.createObjectURL(new Blob([res.data]));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        successCount++;
+      } catch {
+        // Continue with remaining
+      }
+    }
+    setBulkActionLoading(false);
+    if (successCount === targets.length) {
+      toast.success(`Downloaded ${successCount} resume(s)`);
+    } else {
+      toast.error(`Downloaded ${successCount} of ${targets.length} resumes`);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!profilesModal || selectedCandidateIds.size === 0) return;
+    setBulkActionLoading(true);
+    const ids = Array.from(selectedCandidateIds);
+    const results = await Promise.allSettled(
+      ids.map((id) => deleteCandidate(id, profilesModal.jd.id))
+    );
+    const successIds = ids.filter((_, i) => results[i].status === 'fulfilled');
+    setProfilesModal((prev) => prev ? {
+      ...prev,
+      candidates: prev.candidates.filter((c) => !successIds.includes(c.id)),
+    } : null);
+    setSelectedCandidateIds(new Set());
+    setBulkDeleteConfirm(false);
+    setBulkActionLoading(false);
+    if (successIds.length === ids.length) {
+      toast.success(`Deleted ${successIds.length} candidate(s)`);
+    } else {
+      toast.error(`Deleted ${successIds.length} of ${ids.length} candidates`);
     }
   };
 
@@ -183,10 +265,9 @@ export default function ScreenedResumes() {
   const getRecommendationVariant = (rec) => {
     if (!rec) return 'default';
     const r = rec.toLowerCase();
-    if (r.includes('strong')) return 'completed';
-    if (r === 'hire') return 'completed';
-    if (r === 'consider') return 'queued';
-    return 'failed';
+    if (r.includes('strong') || r === 'hire' || r === 'select' || r === 'selected') return 'select';
+    if (r === 'consider' || r.includes('review')) return 'review';
+    return 'reject';
   };
 
   // Navigate to JD-specific results page
@@ -439,63 +520,185 @@ export default function ScreenedResumes() {
       </Modal>
 
       {/* Profiles Modal */}
-      <Modal isOpen={!!profilesModal} onClose={() => setProfilesModal(null)} title="Screened Profiles" wide>
+      <Modal isOpen={!!profilesModal} onClose={closeProfiles} title="Screened Profiles" wide>
         {profilesModal && (
-          <div className="space-y-4">
-            <p className="text-muted text-sm">
-              <span className="text-white font-medium">{profilesModal.jd.title}</span> — {profilesModal.candidates.length} candidate(s)
-            </p>
+          <div className="space-y-3">
+            {/* Header */}
+            <div className="sticky top-0 z-10 pb-3 border-b border-dark-600/60">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-white font-semibold text-sm truncate">{profilesModal.jd.title}</h3>
+                  <p className="text-muted text-xs mt-0.5">
+                    {profilesModal.candidates.length} candidate{profilesModal.candidates.length !== 1 ? 's' : ''} screened
+                  </p>
+                </div>
+                {profilesModal.candidates.length > 0 && !profilesModal.loading && (
+                  <button
+                    onClick={toggleSelectAll}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-700/60 hover:bg-dark-600 text-muted hover:text-white text-xs font-medium transition-all border border-dark-600/80"
+                  >
+                    {selectedCandidateIds.size === profilesModal.candidates.length && profilesModal.candidates.length > 0 ? (
+                      <CheckSquare size={13} className="text-coral" />
+                    ) : (
+                      <Square size={13} />
+                    )}
+                    Select All
+                  </button>
+                )}
+              </div>
+
+              {/* Bulk Action Bar — inline under header */}
+              {selectedCandidateIds.size > 0 && (
+                <div className="flex items-center justify-between gap-3 flex-wrap mt-3 pt-3 border-t border-dark-600/40">
+                  <span className="text-muted text-xs">
+                    <span className="text-white font-medium">{selectedCandidateIds.size}</span> selected
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleBulkDownload}
+                      disabled={bulkActionLoading}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-dark-700 hover:bg-dark-600 text-muted hover:text-green-400 text-xs font-medium transition-all border border-dark-600/80 disabled:opacity-40"
+                    >
+                      <ArrowDownToLine size={12} /> Download
+                    </button>
+                    <button
+                      onClick={() => setBulkDeleteConfirm(true)}
+                      disabled={bulkActionLoading}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-dark-700 hover:bg-dark-600 text-muted hover:text-red-400 text-xs font-medium transition-all border border-dark-600/80 disabled:opacity-40"
+                    >
+                      <Trash2 size={12} /> Delete
+                    </button>
+                    <button
+                      onClick={() => setSelectedCandidateIds(new Set())}
+                      disabled={bulkActionLoading}
+                      className="px-2.5 py-1 rounded-md text-muted hover:text-white text-xs transition-all disabled:opacity-40"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {profilesModal.loading ? (
-              <div className="space-y-3">
-                {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14" />)}
+              <div className="space-y-3 pt-1">
+                {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16" />)}
               </div>
             ) : profilesModal.candidates.length === 0 ? (
-              <p className="text-muted text-sm py-4 text-center">No candidates found.</p>
+              <p className="text-muted text-sm py-8 text-center">No candidates found.</p>
             ) : (
-              <div className="space-y-2 max-h-[55vh] overflow-y-auto">
-                {profilesModal.candidates.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between bg-dark-700 rounded-xl px-4 py-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <FileText size={14} className="text-muted shrink-0" />
-                        <span className="text-white text-sm font-medium truncate">
-                          {c.candidate_name || c.file_name || 'Unknown'}
-                        </span>
+              <div className="space-y-1.5 max-h-[55vh] overflow-y-auto pr-1">
+                {profilesModal.candidates.map((c) => {
+                  const isSelected = selectedCandidateIds.has(c.id);
+                  const score = c.scoring?.match_score ?? 0;
+                  const scoreColor = score >= 70 ? 'text-green-400' : score >= 50 ? 'text-yellow-400' : 'text-red-400';
+                  const barColor = score >= 70 ? 'bg-green-500/80' : score >= 50 ? 'bg-yellow-500/80' : 'bg-red-500/80';
+                  return (
+                    <div
+                      key={c.id}
+                      onClick={() => toggleCandidateSelection(c.id)}
+                      className={`group flex items-center gap-3 rounded-lg px-3.5 py-3 cursor-pointer transition-all border ${
+                        isSelected
+                          ? 'bg-dark-700/90 border-dark-500 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]'
+                          : 'bg-dark-800/40 border-transparent hover:bg-dark-700/60 hover:border-dark-600'
+                      }`}
+                    >
+                      {/* Checkbox */}
+                      <div className="shrink-0">
+                        {isSelected ? (
+                          <CheckSquare size={16} className="text-coral" />
+                        ) : (
+                          <Square size={16} className="text-dark-500 group-hover:text-muted transition-colors" />
+                        )}
                       </div>
-                      {c.candidate_email && (
-                        <p className="text-muted text-xs mt-0.5 ml-5">{c.candidate_email}</p>
-                      )}
+
+                      {/* Candidate Info */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-medium truncate leading-tight">
+                          {(() => {
+                            const n = c.personal?.name || c.candidate_name;
+                            return n && n !== 'NDATA' ? n : 'Unknown Candidate';
+                          })()}
+                        </p>
+                        <p className="text-muted/70 text-[11px] font-mono truncate mt-0.5">{c.file_name || '—'}</p>
+                        {(() => {
+                          const e = c.personal?.email || c.candidate_email;
+                          return e && e !== 'NDATA' ? (
+                            <p className="text-muted text-[11px] truncate">{e}</p>
+                          ) : null;
+                        })()}
+                      </div>
+
+                      {/* Score */}
+                      <div className="hidden sm:flex flex-col items-end shrink-0 w-16">
+                        <span className={`text-xs font-bold font-mono ${scoreColor}`}>{score}%</span>
+                        <div className="w-full h-1 bg-dark-600 rounded-full mt-1 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${barColor} transition-all`}
+                            style={{ width: `${Math.min(100, Math.max(0, score))}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Badge */}
+                      <div className="shrink-0">
+                        <Badge variant={getRecommendationVariant(c.recommendation)}>
+                          {c.recommendation || '—'}
+                        </Badge>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-0.5 shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDownloadResume(c, profilesModal.jd.id); }}
+                          disabled={downloadingCandidateId === c.id}
+                          className="p-1.5 rounded-md hover:bg-dark-600 text-muted hover:text-green-400 transition-colors disabled:opacity-30"
+                          title="Download resume"
+                        >
+                          <ArrowDownToLine size={13} />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteCandidate(c.id, profilesModal.jd.id); }}
+                          disabled={deletingCandidate === c.id}
+                          className="p-1.5 rounded-md hover:bg-dark-600 text-muted hover:text-red-400 transition-colors disabled:opacity-30"
+                          title="Remove candidate"
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0 ml-3">
-                      <span className="text-xs font-mono text-muted">
-                        {c.scoring?.match_score ?? '—'}%
-                      </span>
-                      <Badge variant={getRecommendationVariant(c.recommendation)}>
-                        {c.recommendation || '—'}
-                      </Badge>
-                      <button
-                        onClick={() => handleDownloadResume(c, profilesModal.jd.id)}
-                        disabled={downloadingCandidateId === c.id}
-                        className="p-1 rounded hover:bg-dark-600 text-muted hover:text-green-400 transition-colors disabled:opacity-30"
-                        title="Download resume"
-                      >
-                        <ArrowDownToLine size={14} />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteCandidate(c.id, profilesModal.jd.id)}
-                        disabled={deletingCandidate === c.id}
-                        className="p-1 rounded hover:bg-dark-600 text-muted hover:text-red-400 transition-colors disabled:opacity-30"
-                        title="Remove candidate"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
         )}
+      </Modal>
+
+      {/* Bulk Delete Confirmation */}
+      <Modal isOpen={bulkDeleteConfirm} onClose={() => setBulkDeleteConfirm(false)} title="Delete Selected Profiles">
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Are you sure you want to delete <span className="text-white font-medium">{selectedCandidateIds.size} selected profile{selectedCandidateIds.size !== 1 ? 's' : ''}</span>? This action cannot be undone.
+          </p>
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setBulkDeleteConfirm(false)}
+              disabled={bulkActionLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 !bg-red-500/20 !text-red-400 hover:!bg-red-500/30"
+              onClick={handleBulkDelete}
+              disabled={bulkActionLoading}
+            >
+              {bulkActionLoading ? 'Deleting...' : 'Delete'}
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       {/* Delete Confirmation Modal */}

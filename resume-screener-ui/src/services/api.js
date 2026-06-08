@@ -14,7 +14,7 @@ export const getJDs = () => api.get('/jd');
 export const getJDById = (jdId) => api.get(`/jd/${jdId}`);
 export const deleteJD = (jdId) => api.delete(`/jd/${jdId}`);
 export const updateJD = (jdId, data) => api.put(`/jd/${jdId}`, data);
-export const updateJDText = (jdId, rawText) => api.put(`/jd/${jdId}/text`, { raw_text: rawText });
+export const updateJDText = (jdId, rawText, metadata = {}) => api.put(`/jd/${jdId}/text`, { raw_text: rawText, ...metadata });
 export const uploadJD = (formData) =>
   api.post('/jd', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

@@ -49,12 +49,17 @@ def analyze_risks(
 
     jobs.sort(key=lambda x: x["start"])
 
-    # --- Job hopping detection ---
-    short_stints = [j for j in jobs if j["duration_years"] < 1.0 and j["duration_years"] > 0]
-    if len(short_stints) >= 3:
-        risk_flags.append(f"Job hopper: {len(short_stints)} roles under 1 year")
-    elif len(short_stints) >= 2:
-        risk_flags.append(f"{len(short_stints)} short-term roles (< 1 year)")
+    # --- Job hopping detection (only recent roles within last 5 years) ---
+    cutoff_date = datetime.now() - relativedelta(years=5)
+    recent_short_stints = [
+        j for j in jobs
+        if j["duration_years"] < 1.0 and j["duration_years"] > 0 and j["end"] >= cutoff_date
+    ]
+    # Only penalize if more than 1 recent short-term role
+    if len(recent_short_stints) >= 3:
+        risk_flags.append(f"Job hopper: {len(recent_short_stints)} recent roles under 1 year")
+    elif len(recent_short_stints) >= 2:
+        risk_flags.append(f"{len(recent_short_stints)} recent short-term roles (< 1 year)")
 
     # --- Gap and overlap detection ---
     for i in range(len(jobs) - 1):
@@ -91,9 +96,9 @@ def analyze_risks(
             months = months_since(last_work_date)
             risk_flags.append(f"Resume freshness: last role ended {months} months ago")
 
-    # --- Short tenure at individual companies ---
+    # --- Short tenure at individual companies (only recent, within last 5 years) ---
     for j in jobs:
-        if 0 < j["duration_years"] < 0.5:
+        if 0 < j["duration_years"] < 0.5 and j["end"] >= cutoff_date:
             risk_flags.append(f"Short tenure: {j['organization']} ({round(j['duration_years'] * 12)} months)")
 
     # Build descriptions

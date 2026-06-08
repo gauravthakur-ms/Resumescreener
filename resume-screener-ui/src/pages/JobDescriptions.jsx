@@ -83,7 +83,9 @@ export default function JobDescriptions() {
         secondary: (selectedJd.skills?.secondary || []).join(', '),
       },
       certifications_preferred: (selectedJd.certifications_preferred || []).join(', '),
-      scoring_weights: { ...(selectedJd.scoring_weights || {}) },
+      scoring_weights: Object.fromEntries(
+        Object.entries(selectedJd.scoring_weights || {}).map(([k, v]) => [k, Math.round(v * 100)])
+      ),
       thresholds: { ...(selectedJd.thresholds || {}) },
     });
     // Prepare text content for text mode
@@ -117,9 +119,18 @@ export default function JobDescriptions() {
       toast.error('Text content cannot be empty');
       return;
     }
+    if (!editData.rr_id?.trim()) {
+      toast.error('RR ID is required');
+      return;
+    }
     setSaving(true);
     try {
-      const res = await updateJDText(selectedJd.id, textContent);
+      const metadata = {
+        title: editData.title?.trim() || undefined,
+        rr_id: editData.rr_id?.trim() || undefined,
+        project_id: editData.project_id?.trim() || undefined,
+      };
+      const res = await updateJDText(selectedJd.id, textContent, metadata);
       setSelectedJd(res.data);
       setEditing(false);
       toast.success('Job description updated (re-parsed from text)');
@@ -136,6 +147,11 @@ export default function JobDescriptions() {
       toast.error('RR ID is required');
       return;
     }
+    const totalWeight = Object.values(editData.scoring_weights).reduce((sum, v) => sum + (parseFloat(v) || 0), 0);
+    if (totalWeight !== 100) {
+      toast.error('Total scoring weightage must equal 100%.');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -149,7 +165,9 @@ export default function JobDescriptions() {
           secondary: editData.skills.secondary.split(',').map(s => s.trim()).filter(Boolean),
         },
         certifications_preferred: editData.certifications_preferred.split(',').map(s => s.trim()).filter(Boolean),
-        scoring_weights: editData.scoring_weights,
+        scoring_weights: Object.fromEntries(
+          Object.entries(editData.scoring_weights).map(([k, v]) => [k, (parseFloat(v) || 0) / 100])
+        ),
         thresholds: {
           selected: parseInt(editData.thresholds.selected) || 70,
           need_review: parseInt(editData.thresholds.need_review) || 50,
@@ -703,26 +721,37 @@ export default function JobDescriptions() {
             </div>
 
             <div>
-              <label className="text-xs text-muted block mb-2">Scoring Weights</label>
+              <label className="text-xs text-muted block mb-2">Scoring Weights (%)</label>
               <div className="grid grid-cols-2 gap-3">
                 {Object.entries(editData.scoring_weights).map(([k, v]) => (
                   <div key={k}>
                     <label className="text-xs text-muted capitalize block mb-1">{k.replace(/_/g, ' ')}</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={v}
-                      onChange={(e) => setEditData({
-                        ...editData,
-                        scoring_weights: { ...editData.scoring_weights, [k]: parseFloat(e.target.value) || 0 }
-                      })}
-                      className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral"
-                    />
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="5"
+                        value={v}
+                        onChange={(e) => setEditData({
+                          ...editData,
+                          scoring_weights: { ...editData.scoring_weights, [k]: parseInt(e.target.value) || 0 }
+                        })}
+                        className="w-full px-3 py-2 pr-7 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm focus:outline-none focus:border-coral"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted text-sm">%</span>
+                    </div>
                   </div>
                 ))}
               </div>
+              {(() => {
+                const total = Object.values(editData.scoring_weights).reduce((s, v) => s + (parseInt(v) || 0), 0);
+                return total !== 100 ? (
+                  <p className="text-xs text-coral mt-2">Total scoring weightage must equal 100%. (Current: {total}%)</p>
+                ) : (
+                  <p className="text-xs text-green-400 mt-2">Total: {total}% ✓</p>
+                );
+              })()}
             </div>
 
             <div>
@@ -757,13 +786,45 @@ export default function JobDescriptions() {
               <Button variant="secondary" className="flex-1" onClick={() => setEditing(false)}>
                 <X size={14} /> Cancel
               </Button>
-              <Button className="flex-1" onClick={handleSave} disabled={saving || !editData.rr_id?.trim()}>
+              <Button className="flex-1" onClick={handleSave} disabled={saving || !editData.rr_id?.trim() || Object.values(editData.scoring_weights).reduce((s, v) => s + (parseInt(v) || 0), 0) !== 100}>
                 <Save size={14} /> {saving ? 'Saving...' : 'Save Changes'}
               </Button>
             </div>
               </>
             ) : (
               <>
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <label className="text-xs text-muted block mb-1">RR ID <span className="text-coral">*</span></label>
+                    <input
+                      type="text"
+                      value={editData.rr_id}
+                      onChange={(e) => setEditData({ ...editData, rr_id: e.target.value })}
+                      className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-coral"
+                      placeholder="RR ID"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted block mb-1">Project ID</label>
+                    <input
+                      type="text"
+                      value={editData.project_id}
+                      onChange={(e) => setEditData({ ...editData, project_id: e.target.value })}
+                      className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-coral"
+                      placeholder="Project ID (optional)"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted block mb-1">Job Title</label>
+                    <input
+                      type="text"
+                      value={editData.title}
+                      onChange={(e) => setEditData({ ...editData, title: e.target.value })}
+                      className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-coral"
+                      placeholder="Job Title"
+                    />
+                  </div>
+                </div>
                 <div>
                   <p className="text-xs text-muted mb-2">
                     Edit the full job description text below. On save, it will be re-parsed by AI to extract structured fields.
@@ -781,7 +842,7 @@ export default function JobDescriptions() {
                   <Button variant="secondary" className="flex-1" onClick={() => setEditing(false)}>
                     <X size={14} /> Cancel
                   </Button>
-                  <Button className="flex-1" onClick={handleSaveText} disabled={saving || !textContent.trim()}>
+                  <Button className="flex-1" onClick={handleSaveText} disabled={saving || !textContent.trim() || !editData.rr_id?.trim()}>
                     <Save size={14} /> {saving ? 'Saving...' : 'Save'}
                   </Button>
                 </div>

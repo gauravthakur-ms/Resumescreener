@@ -284,18 +284,17 @@ export default function JDResults() {
               )}
             </div>
 
-            {/* Recruiter Summary - always visible */}
-            {candidate.recruiter_summary && (
-              <div className="mx-4 mb-3 px-3 py-2.5 rounded-lg bg-dark-700/40 border-l-2 border-warning/50">
-                <p className="text-[13px] text-white/80 leading-relaxed">
-                  {candidate.recruiter_summary}
-                </p>
-              </div>
-            )}
-
             {/* Expanded Detail */}
             {expandedId === candidate.id && (
               <div className="border-t border-dark-600 p-4 bg-dark-900/50 space-y-4">
+                {/* Recruiter Summary */}
+                {candidate.recruiter_summary && (
+                  <div className="px-3 py-2.5 rounded-lg bg-dark-700/40 border-l-2 border-warning/50">
+                    <p className="text-[13px] text-white/80 leading-relaxed">
+                      {candidate.recruiter_summary}
+                    </p>
+                  </div>
+                )}
                 {/* Personal Info */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="flex items-center gap-2">

@@ -330,12 +330,18 @@ def handle_update_jd_text(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         # Update fields from parsed output
-        existing["title"] = parsed.get("title", existing.get("title", "Untitled Role"))
+        existing["title"] = body.get("title") or parsed.get("title", existing.get("title", "Untitled Role"))
         existing["domain"] = parsed.get("domain", existing.get("domain", "General"))
         existing["min_experience_years"] = parsed.get("min_experience_years", existing.get("min_experience_years", 0))
         existing["skills"] = parsed.get("skills", existing.get("skills", {}))
         existing["certifications_preferred"] = parsed.get("certifications_preferred", existing.get("certifications_preferred", []))
         existing["raw_text"] = raw_text[:5000]
+
+        # Update metadata fields if provided
+        if "rr_id" in body:
+            existing["rr_id"] = body["rr_id"].strip()
+        if "project_id" in body:
+            existing["project_id"] = body["project_id"].strip()
 
         upsert_jd(existing)
         logger.info(f"Updated JD via text reparse: {jd_id}")
