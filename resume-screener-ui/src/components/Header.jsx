@@ -12,8 +12,13 @@ export default function Header() {
       </div>
 
       {/* Center — App Title */}
-      <div className="flex items-center justify-center">
-        <img src="/AppName.png" alt="Smart Resume Screener" className="h-[52px] w-auto object-contain" />
+      <div className="flex items-center justify-center gap-3">
+        <img src="/AppName.png" alt="" className="h-12 w-12 object-contain" />
+        <h1 className="text-[19px] font-extrabold leading-tight tracking-tight">
+          <span className="text-coral">Smart</span>
+          <span className="text-white/90"> Resume </span>
+          <span className="text-coral">Screener</span>
+        </h1>
       </div>
 
       {/* Right — User Avatar */}
