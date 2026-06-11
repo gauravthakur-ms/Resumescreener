@@ -9,6 +9,7 @@ from storage.blob_client import upload_resume, copy_resume_to_folder
 from storage.queue_client import enqueue_resume
 from storage.cosmos_client import get_jd, upsert_batch
 from models.batch_model import Batch
+from auth.token_validator import get_user_id
 from config import MAX_FILE_SIZE_MB
 from utils.logger import get_logger, log_with_context
 
@@ -44,6 +45,15 @@ def handle_resume_upload(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             json.dumps({"error": f"JD not found: {jd_id}"}),
             status_code=404,
+            mimetype="application/json",
+        )
+
+    # Verify ownership of the JD
+    user_id = get_user_id(req)
+    if jd.get("user_id") and jd["user_id"] != user_id:
+        return func.HttpResponse(
+            json.dumps({"error": "Access denied"}),
+            status_code=403,
             mimetype="application/json",
         )
 
@@ -124,6 +134,7 @@ def handle_resume_upload(req: func.HttpRequest) -> func.HttpResponse:
     batch = Batch(
         id=batch_id,
         jd_id=jd_id,
+        user_id=user_id,
         total=queued + duplicates_skipped,
         queued=queued,
         duplicates=duplicates_skipped,

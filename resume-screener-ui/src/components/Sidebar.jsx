@@ -9,6 +9,7 @@ import {
   PanelLeftOpen,
   Shield,
   User,
+  RefreshCw,
 } from 'lucide-react';
 
 const navItems = [
@@ -17,6 +18,7 @@ const navItems = [
   { path: '/upload', icon: Upload, label: 'Upload Resumes' },
   { path: '/screened', icon: UserCheck, label: 'Screened Resumes' },
   { path: '/batches', icon: Layers, label: 'Batches', adminOnly: true },
+  { path: '/convert', icon: RefreshCw, label: 'Convert Resume' },
 ];
 
 export default function Sidebar({ collapsed, setCollapsed, role, onRoleChange }) {

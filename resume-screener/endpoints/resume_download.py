@@ -2,8 +2,9 @@
 
 import json
 import azure.functions as func
-from storage.cosmos_client import get_candidate
+from storage.cosmos_client import get_candidate, get_jd
 from storage.blob_client import download_resume
+from auth.token_validator import get_user_id
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -26,6 +27,16 @@ def handle_resume_download(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             json.dumps({"error": "Candidate not found"}),
             status_code=404,
+            mimetype="application/json",
+        )
+
+    # Verify ownership via JD
+    jd = get_jd(jd_id)
+    user_id = get_user_id(req)
+    if jd and jd.get("user_id") and jd["user_id"] != user_id:
+        return func.HttpResponse(
+            json.dumps({"error": "Access denied"}),
+            status_code=403,
             mimetype="application/json",
         )
 

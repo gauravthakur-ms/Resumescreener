@@ -1,4 +1,4 @@
-"""Cosmos DB CRUD operations for JD, Candidate, and Batch containers."""
+"""Cosmos DB CRUD operations for JD, Candidate, Batch, and Conversion containers."""
 
 from azure.cosmos import CosmosClient, PartitionKey, exceptions
 from config import (
@@ -8,6 +8,7 @@ from config import (
     COSMOS_CONTAINER_JD,
     COSMOS_CONTAINER_CANDIDATES,
     COSMOS_CONTAINER_BATCHES,
+    COSMOS_CONTAINER_CONVERSIONS,
 )
 from utils.logger import get_logger, log_with_context
 
@@ -49,9 +50,13 @@ def get_jd(jd_id: str) -> dict | None:
         return None
 
 
-def list_jds() -> list[dict]:
-    """List all job descriptions."""
+def list_jds(user_id: str = None) -> list[dict]:
+    """List all job descriptions, optionally filtered by user_id."""
     container = _get_container(COSMOS_CONTAINER_JD)
+    if user_id:
+        query = "SELECT * FROM c WHERE c.user_id = @user_id ORDER BY c.uploaded_at DESC"
+        params = [{"name": "@user_id", "value": user_id}]
+        return list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
     query = "SELECT * FROM c ORDER BY c.uploaded_at DESC"
     return list(container.query_items(query=query, enable_cross_partition_query=True))
 
@@ -191,11 +196,15 @@ def get_batch(batch_id: str) -> dict | None:
         return None
 
 
-def list_batches(limit: int = 20) -> list[dict]:
-    """List recent batches ordered by upload time (newest first)."""
+def list_batches(limit: int = 20, user_id: str = None) -> list[dict]:
+    """List recent batches ordered by upload time (newest first), optionally filtered by user_id."""
     container = _get_container(COSMOS_CONTAINER_BATCHES)
-    query = "SELECT * FROM c ORDER BY c.uploaded_at DESC OFFSET 0 LIMIT @limit"
-    params = [{"name": "@limit", "value": limit}]
+    if user_id:
+        query = "SELECT * FROM c WHERE c.user_id = @user_id ORDER BY c.uploaded_at DESC OFFSET 0 LIMIT @limit"
+        params = [{"name": "@limit", "value": limit}, {"name": "@user_id", "value": user_id}]
+    else:
+        query = "SELECT * FROM c ORDER BY c.uploaded_at DESC OFFSET 0 LIMIT @limit"
+        params = [{"name": "@limit", "value": limit}]
     return list(container.query_items(
         query=query,
         parameters=params,
@@ -232,3 +241,42 @@ def increment_batch_counter(batch_id: str, field: str):
         else:
             batch["status"] = "processing"
         upsert_batch(batch)
+
+
+# --- Resume Conversions ---
+
+def upsert_conversion(conversion_data: dict) -> dict:
+    """Upsert a resume conversion document."""
+    container = _get_container(COSMOS_CONTAINER_CONVERSIONS)
+    return container.upsert_item(conversion_data)
+
+
+def get_conversion(conversion_id: str, user_id: str) -> dict | None:
+    """Get a conversion by ID (partition key is user_id)."""
+    container = _get_container(COSMOS_CONTAINER_CONVERSIONS)
+    try:
+        return container.read_item(item=conversion_id, partition_key=user_id)
+    except exceptions.CosmosResourceNotFoundError:
+        return None
+
+
+def list_conversions(user_id: str, limit: int = 50) -> list[dict]:
+    """List conversions for a specific user."""
+    container = _get_container(COSMOS_CONTAINER_CONVERSIONS)
+    query = "SELECT * FROM c WHERE c.user_id = @user_id ORDER BY c.created_at DESC OFFSET 0 LIMIT @limit"
+    params = [{"name": "@user_id", "value": user_id}, {"name": "@limit", "value": limit}]
+    return list(container.query_items(
+        query=query,
+        parameters=params,
+        enable_cross_partition_query=True,
+    ))
+
+
+def delete_conversion(conversion_id: str, user_id: str) -> bool:
+    """Delete a conversion. Returns True if deleted."""
+    container = _get_container(COSMOS_CONTAINER_CONVERSIONS)
+    try:
+        container.delete_item(item=conversion_id, partition_key=user_id)
+        return True
+    except exceptions.CosmosResourceNotFoundError:
+        return False

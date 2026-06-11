@@ -5,6 +5,7 @@ from datetime import datetime
 import azure.functions as func
 
 from storage.cosmos_client import get_candidates_by_jd, delete_candidate, get_jd
+from auth.token_validator import get_user_id
 from utils.excel_exporter import generate_excel_report
 from utils.logger import get_logger
 
@@ -26,6 +27,15 @@ def handle_get_candidates_by_jd(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             json.dumps({"error": f"JD not found: {jd_id}"}),
             status_code=404,
+            mimetype="application/json",
+        )
+
+    # Verify ownership
+    user_id = get_user_id(req)
+    if jd.get("user_id") and jd["user_id"] != user_id:
+        return func.HttpResponse(
+            json.dumps({"error": "Access denied"}),
+            status_code=403,
             mimetype="application/json",
         )
 
@@ -64,6 +74,22 @@ def handle_delete_candidate(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="application/json",
         )
 
+    # Verify ownership via JD
+    jd = get_jd(jd_id)
+    if not jd:
+        return func.HttpResponse(
+            json.dumps({"error": f"JD not found: {jd_id}"}),
+            status_code=404,
+            mimetype="application/json",
+        )
+    user_id = get_user_id(req)
+    if jd.get("user_id") and jd["user_id"] != user_id:
+        return func.HttpResponse(
+            json.dumps({"error": "Access denied"}),
+            status_code=403,
+            mimetype="application/json",
+        )
+
     deleted = delete_candidate(candidate_id, jd_id)
     if not deleted:
         return func.HttpResponse(
@@ -94,6 +120,15 @@ def handle_jd_export(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             json.dumps({"error": f"JD not found: {jd_id}"}),
             status_code=404,
+            mimetype="application/json",
+        )
+
+    # Verify ownership
+    user_id = get_user_id(req)
+    if jd.get("user_id") and jd["user_id"] != user_id:
+        return func.HttpResponse(
+            json.dumps({"error": "Access denied"}),
+            status_code=403,
             mimetype="application/json",
         )
 

@@ -8,6 +8,7 @@ from datetime import datetime
 class Batch(BaseModel):
     id: str
     jd_id: str
+    user_id: str = ""
     uploaded_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
     total: int = 0
     queued: int = 0

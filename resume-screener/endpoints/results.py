@@ -7,6 +7,7 @@ import azure.functions as func
 
 from storage.cosmos_client import get_batch, get_candidates_by_batch, get_jd
 from storage.blob_client import upload_export, get_export_sas_url
+from auth.token_validator import get_user_id
 from utils.excel_exporter import generate_excel_report
 from utils.logger import get_logger, log_with_context
 
@@ -34,6 +35,15 @@ def handle_batch_results(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             json.dumps({"error": f"Batch not found: {batch_id}"}),
             status_code=404,
+            mimetype="application/json",
+        )
+
+    # Verify ownership
+    user_id = get_user_id(req)
+    if batch.get("user_id") and batch["user_id"] != user_id:
+        return func.HttpResponse(
+            json.dumps({"error": "Access denied"}),
+            status_code=403,
             mimetype="application/json",
         )
 
@@ -95,6 +105,15 @@ def handle_batch_export(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             json.dumps({"error": f"Batch not found: {batch_id}"}),
             status_code=404,
+            mimetype="application/json",
+        )
+
+    # Verify ownership
+    user_id = get_user_id(req)
+    if batch.get("user_id") and batch["user_id"] != user_id:
+        return func.HttpResponse(
+            json.dumps({"error": "Access denied"}),
+            status_code=403,
             mimetype="application/json",
         )
 

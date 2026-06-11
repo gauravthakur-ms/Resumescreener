@@ -5,6 +5,7 @@ import json
 import azure.functions as func
 
 from storage.cosmos_client import get_batch, list_batches, delete_batch
+from auth.token_validator import get_user_id
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -25,6 +26,15 @@ def handle_batch_status(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             json.dumps({"error": f"Batch not found: {batch_id}"}),
             status_code=404,
+            mimetype="application/json",
+        )
+
+    # Verify ownership
+    user_id = get_user_id(req)
+    if batch.get("user_id") and batch["user_id"] != user_id:
+        return func.HttpResponse(
+            json.dumps({"error": "Access denied"}),
+            status_code=403,
             mimetype="application/json",
         )
 
@@ -59,9 +69,10 @@ def handle_batch_status(req: func.HttpRequest) -> func.HttpResponse:
 
 
 def handle_get_batches(req: func.HttpRequest) -> func.HttpResponse:
-    """GET /api/batches — List recent batches."""
+    """GET /api/batches — List recent batches for the current user."""
     try:
-        batches = list_batches(limit=50)
+        user_id = get_user_id(req)
+        batches = list_batches(limit=50, user_id=user_id)
         result = []
         for b in batches:
             total = b.get("total", 0)
@@ -101,6 +112,22 @@ def handle_delete_batch(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             json.dumps({"error": "batch_id is required"}),
             status_code=400,
+            mimetype="application/json",
+        )
+
+    # Verify ownership before deleting
+    batch = get_batch(batch_id)
+    if not batch:
+        return func.HttpResponse(
+            json.dumps({"error": f"Batch not found: {batch_id}"}),
+            status_code=404,
+            mimetype="application/json",
+        )
+    user_id = get_user_id(req)
+    if batch.get("user_id") and batch["user_id"] != user_id:
+        return func.HttpResponse(
+            json.dumps({"error": "Access denied"}),
+            status_code=403,
             mimetype="application/json",
         )
 

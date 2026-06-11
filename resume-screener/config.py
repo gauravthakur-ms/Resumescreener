@@ -30,11 +30,13 @@ BLOB_CONTAINER_EXPORTS = os.getenv("BLOB_CONTAINER_EXPORTS", "exports")
 
 # Queue name
 QUEUE_NAME = os.getenv("QUEUE_NAME", "resume-processing-queue")
+CONVERSION_QUEUE_NAME = os.getenv("CONVERSION_QUEUE_NAME", "resume-conversion-queue")
 
 # Cosmos DB container names
 COSMOS_CONTAINER_JD = os.getenv("COSMOS_CONTAINER_JD", "job-descriptions")
 COSMOS_CONTAINER_CANDIDATES = os.getenv("COSMOS_CONTAINER_CANDIDATES", "candidates")
 COSMOS_CONTAINER_BATCHES = os.getenv("COSMOS_CONTAINER_BATCHES", "batches")
+COSMOS_CONTAINER_CONVERSIONS = os.getenv("COSMOS_CONTAINER_CONVERSIONS", "resume-conversions")
 
 # Processing limits
 MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "10"))

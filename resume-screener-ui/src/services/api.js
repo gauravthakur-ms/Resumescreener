@@ -9,6 +9,30 @@ const api = axios.create({
   },
 });
 
+// Attach Bearer token to every request using the shared MSAL instance
+let _msalInstance = null;
+
+export function setMsalInstance(instance) {
+  _msalInstance = instance;
+}
+
+api.interceptors.request.use(async (config) => {
+  if (!_msalInstance) return config;
+  const accounts = _msalInstance.getAllAccounts();
+  if (accounts.length > 0) {
+    try {
+      const response = await _msalInstance.acquireTokenSilent({
+        scopes: [`api://${import.meta.env.VITE_BACKEND_CLIENT_ID || '0a68a336-7936-4fc8-9f9a-7f0cb6c7dc7a'}/.default`],
+        account: accounts[0],
+      });
+      config.headers.Authorization = `Bearer ${response.accessToken}`;
+    } catch {
+      // Token acquisition failed — request proceeds without auth header
+    }
+  }
+  return config;
+});
+
 // JD endpoints
 export const getJDs = () => api.get('/jd');
 export const getJDById = (jdId) => api.get(`/jd/${jdId}`);
@@ -41,6 +65,16 @@ export const getCandidatesByJd = (jdId) => api.get(`/jd/${jdId}/candidates`);
 export const deleteCandidate = (candidateId, jdId) => api.delete(`/candidate/${candidateId}`, { params: { jd_id: jdId } });
 export const getJdExport = (jdId, candidates) => api.post(`/jd/${jdId}/export`, { candidates }, { responseType: 'blob' });
 export const downloadResume = (candidateId, jdId) => api.get(`/candidate/${candidateId}/download`, { params: { jd_id: jdId }, responseType: 'blob' });
+
+// Resume Conversion endpoints
+export const uploadConversion = (formData) =>
+  api.post('/convert', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+export const getConversionStatus = (conversionId) => api.get(`/convert/${conversionId}/status`);
+export const getConversion = (conversionId) => api.get(`/convert/${conversionId}`);
+export const updateConversion = (conversionId, data) => api.put(`/convert/${conversionId}`, data);
+export const downloadConversion = (conversionId) => api.get(`/convert/${conversionId}/download`, { responseType: 'blob' });
+export const getConversions = () => api.get('/conversions');
+export const deleteConversion = (conversionId) => api.delete(`/convert/${conversionId}`);
 
 // Health
 export const healthCheck = () => api.get('/health');

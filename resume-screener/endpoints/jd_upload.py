@@ -10,6 +10,7 @@ from processing.jd_parser import parse_jd
 from storage.blob_client import upload_jd_file
 from storage.cosmos_client import upsert_jd, get_jd, list_jds, delete_jd
 from models.jd_model import JobDescription, SkillsConfig, ScoringWeights, Thresholds
+from auth.token_validator import get_user_id
 from utils.logger import get_logger, log_with_context
 
 logger = get_logger(__name__)
@@ -95,9 +96,11 @@ def handle_jd_upload(req: func.HttpRequest) -> func.HttpResponse:
         # Build JD model — user-entered title takes priority over LLM-extracted
         jd_id = str(uuid.uuid4())
         final_title = user_title if user_title else parsed.get("title", "Untitled Role")
+        user_id = get_user_id(req)
         jd = JobDescription(
             id=jd_id,
             title=final_title,
+            user_id=user_id,
             rr_id=rr_id.strip(),
             project_id=project_id,
             domain=parsed.get("domain", "General"),
@@ -148,9 +151,10 @@ def handle_jd_upload(req: func.HttpRequest) -> func.HttpResponse:
 
 
 def handle_get_jds(req: func.HttpRequest) -> func.HttpResponse:
-    """GET /api/jd — List all active JDs."""
+    """GET /api/jd — List all active JDs for the current user."""
     try:
-        jds = list_jds()
+        user_id = get_user_id(req)
+        jds = list_jds(user_id=user_id)
         # Return summary (exclude raw_text for brevity)
         result = []
         for jd in jds:
@@ -195,6 +199,15 @@ def handle_get_jd_by_id(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="application/json",
         )
 
+    # Verify ownership
+    user_id = get_user_id(req)
+    if jd.get("user_id") and jd["user_id"] != user_id:
+        return func.HttpResponse(
+            json.dumps({"error": "Access denied"}),
+            status_code=403,
+            mimetype="application/json",
+        )
+
     # Remove Cosmos metadata
     jd.pop("_rid", None)
     jd.pop("_self", None)
@@ -216,6 +229,22 @@ def handle_delete_jd(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             json.dumps({"error": "jd_id is required"}),
             status_code=400,
+            mimetype="application/json",
+        )
+
+    # Verify ownership before deleting
+    jd = get_jd(jd_id)
+    if not jd:
+        return func.HttpResponse(
+            json.dumps({"error": f"JD not found: {jd_id}"}),
+            status_code=404,
+            mimetype="application/json",
+        )
+    user_id = get_user_id(req)
+    if jd.get("user_id") and jd["user_id"] != user_id:
+        return func.HttpResponse(
+            json.dumps({"error": "Access denied"}),
+            status_code=403,
             mimetype="application/json",
         )
 
@@ -250,6 +279,15 @@ def handle_update_jd(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             json.dumps({"error": f"JD not found: {jd_id}"}),
             status_code=404,
+            mimetype="application/json",
+        )
+
+    # Verify ownership
+    user_id = get_user_id(req)
+    if existing.get("user_id") and existing["user_id"] != user_id:
+        return func.HttpResponse(
+            json.dumps({"error": "Access denied"}),
+            status_code=403,
             mimetype="application/json",
         )
 
@@ -298,6 +336,15 @@ def handle_update_jd_text(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             json.dumps({"error": f"JD not found: {jd_id}"}),
             status_code=404,
+            mimetype="application/json",
+        )
+
+    # Verify ownership
+    user_id = get_user_id(req)
+    if existing.get("user_id") and existing["user_id"] != user_id:
+        return func.HttpResponse(
+            json.dumps({"error": "Access denied"}),
+            status_code=403,
             mimetype="application/json",
         )
 

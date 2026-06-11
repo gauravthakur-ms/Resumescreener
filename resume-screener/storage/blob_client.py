@@ -87,6 +87,17 @@ def upload_export(file_bytes: bytes, file_name: str) -> str:
     return f"{BLOB_CONTAINER_EXPORTS}/{file_name}"
 
 
+def download_export(file_path: str) -> bytes:
+    """Download a file from the exports container. file_path can include the container prefix."""
+    service = _get_blob_service()
+    # Strip container prefix if present
+    blob_name = file_path
+    if blob_name.startswith(f"{BLOB_CONTAINER_EXPORTS}/"):
+        blob_name = blob_name[len(f"{BLOB_CONTAINER_EXPORTS}/"):]
+    blob_client = service.get_blob_client(container=BLOB_CONTAINER_EXPORTS, blob=blob_name)
+    return blob_client.download_blob().readall()
+
+
 def get_export_sas_url(file_name: str, expiry_hours: int = 1) -> str:
     """Generate a SAS URL for downloading an export file."""
     service = _get_blob_service()
